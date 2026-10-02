@@ -36,9 +36,9 @@ export function jevCompareCalls(evidence: Record<(typeof JEV_COMPARE_SOURCES)[nu
 
 export const AGENT_INSTRUCTIONS: Record<FitAgent, string> = {
   softwareEngineer:
-    "You are a software engineer. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",
+    "You are a state.jobTitle for the role in state.jobTitle. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",
   dataScientist:
-    "You are a data scientist. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh analysis, modeling, experimentation, and data work. Ignore name, school, photos, and location.",
+    "You are a hiring manager for the role in state.jobTitle. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh analysis, modeling, experimentation, and data work. Ignore name, school, photos, and location.",
   resumeAnalyst:
     "You are a hiring analyst. Using only state.evidence (the candidate resume), judge how well the candidate meets state.jobTitle and state.jobRequirements. Match skills, experience, and projects to the posting. Ignore name, gender, age, photos, address, and school prestige.",
 };
