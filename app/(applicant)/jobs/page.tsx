@@ -5,7 +5,6 @@ import { requireRole } from "@/lib/auth/session";
 import { getTokenBalance } from "@/lib/data/tokens";
 import {
   applicantHasLinkedIn,
-  getApplicationForJob,
   getLatestSucceededFits,
   listApplicantApplications,
   listOpenJobs,
@@ -56,6 +55,7 @@ export default async function JobsPage({
     Promise.resolve(applicantHasLinkedIn(session.userId)),
   ]);
 
+  const appliedByJob = new Map(applications.map((item) => [item.jobId, item]));
   const active = applications.filter((item) => item.status === "submitted" || item.status === "shortlisted");
   const recent = applications.slice(0, 3);
   const days = daysUntilReset(balance.resetsAt);
@@ -125,7 +125,7 @@ export default async function JobsPage({
             />
           ) : (
             jobs.map((job) => {
-              const application = getApplicationForJob(session.userId, job.id);
+              const application = appliedByJob.get(job.id);
               return (
                 <JobCard
                   key={job.id}

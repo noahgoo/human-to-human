@@ -124,7 +124,7 @@ export function ExportCard({ role }: { role: Role | null }) {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "nexuspulse-data.json";
+      link.download = "known-data.json";
       document.body.appendChild(link);
       link.click();
       link.remove();

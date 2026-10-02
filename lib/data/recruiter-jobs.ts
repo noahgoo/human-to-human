@@ -1,6 +1,8 @@
 import "server-only";
 import type { Job, JobStatus } from "@/lib/types";
 import { db, delay } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLiveRecruiterJob, listLiveRecruiterJobs } from "@/lib/data/live-store";
 
 export interface JobCounts {
   applicationCount: number;
@@ -36,6 +38,7 @@ export async function getRecruiterJobsDashboard(companyId: string): Promise<{
   jobs: RecruiterJobListItem[];
   metrics: RecruiterJobMetrics;
 }> {
+  if (isSupabaseConfigured()) return listLiveRecruiterJobs(companyId);
   await delay();
   const store = db();
   const jobs = store.jobs
@@ -56,6 +59,7 @@ export async function getRecruiterJobsDashboard(companyId: string): Promise<{
 }
 
 export async function getRecruiterJob(companyId: string, jobId: string): Promise<RecruiterJobListItem | null> {
+  if (isSupabaseConfigured()) return getLiveRecruiterJob(companyId, jobId);
   await delay();
   const job = db().jobs.find((item) => item.id === jobId && item.companyId === companyId);
   if (!job) return null;

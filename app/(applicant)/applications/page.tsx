@@ -9,7 +9,7 @@ import { StatusChip } from "@/components/shared/chips";
 import { CompanyLogo, EmptyState, PageHeader } from "@/components/shared/misc";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = { title: "My applications · NexusPulse" };
+export const metadata: Metadata = { title: "My applications" };
 
 export default async function ApplicationsPage() {
   const session = await requireRole("applicant");

@@ -1,6 +1,14 @@
 import "server-only";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import {
+  getLiveApplicationForJob,
+  getLiveJobForApplicant,
+  listLiveApplicantApplications,
+  listLiveOpenJobs,
+  listLiveSucceededFits,
+} from "@/lib/data/live-store";
 import type { Application, ApplicationStatus, FitEvaluation, JobWithCompany, TokenCost } from "@/lib/types";
 
 export interface JobListFilters {
@@ -24,7 +32,8 @@ function companyOf(companyId: string) {
 }
 
 /** Open jobs at verified companies, newest first. `q` matches title or company name. */
-export function listOpenJobs(filters: JobListFilters = {}): JobWithCompany[] {
+export async function listOpenJobs(filters: JobListFilters = {}): Promise<JobWithCompany[]> {
+  if (isSupabaseConfigured()) return listLiveOpenJobs(filters);
   const q = filters.q?.trim().toLowerCase();
   const rows: JobWithCompany[] = [];
   for (const job of db().jobs) {
@@ -52,7 +61,8 @@ export function listOpenJobs(filters: JobListFilters = {}): JobWithCompany[] {
  * Visible job detail. Open + verified company, or a closed job the applicant already applied to.
  * Anything else is a 404.
  */
-export function getJobForApplicant(jobId: string, applicantId: string): JobWithCompany | null {
+export async function getJobForApplicant(jobId: string, applicantId: string): Promise<JobWithCompany | null> {
+  if (isSupabaseConfigured()) return getLiveJobForApplicant(jobId, applicantId);
   const store = db();
   const job = store.jobs.find((j) => j.id === jobId);
   if (!job) return null;
@@ -71,7 +81,8 @@ export function getJobForApplicant(jobId: string, applicantId: string): JobWithC
   };
 }
 
-export function listApplicantApplications(applicantId: string): ApplicantApplicationCard[] {
+export async function listApplicantApplications(applicantId: string): Promise<ApplicantApplicationCard[]> {
+  if (isSupabaseConfigured()) return listLiveApplicantApplications(applicantId);
   const store = db();
   return store.applications
     .filter((a) => a.applicantId === applicantId)
@@ -91,14 +102,16 @@ export function listApplicantApplications(applicantId: string): ApplicantApplica
     });
 }
 
-export function getApplicationForJob(applicantId: string, jobId: string): Application | undefined {
+export async function getApplicationForJob(applicantId: string, jobId: string): Promise<Application | undefined> {
+  if (isSupabaseConfigured()) return getLiveApplicationForJob(applicantId, jobId);
   return db()
     .applications.filter((a) => a.applicantId === applicantId && a.jobId === jobId)
     .sort((a, b) => Date.parse(b.submittedAt) - Date.parse(a.submittedAt))[0];
 }
 
 /** Latest succeeded fit per job for this applicant. */
-export function getLatestSucceededFits(applicantId: string): Map<string, FitEvaluation> {
+export async function getLatestSucceededFits(applicantId: string): Promise<Map<string, FitEvaluation>> {
+  if (isSupabaseConfigured()) return listLiveSucceededFits(applicantId);
   const fits = db()
     .fitEvaluations.filter((f) => f.applicantId === applicantId && f.status === "succeeded")
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));

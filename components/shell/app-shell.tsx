@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BadgeCheck } from "lucide-react";
 import type { AppSession } from "@/lib/auth/session";
 import type { TokenBalance } from "@/lib/types";
+import { BrandMark } from "@/components/brand-mark";
 import { BRAND } from "@/lib/copy";
 import { TokenBalancePill } from "@/components/tokens/token-balance-pill";
 import { NavLinks, type NavItem } from "./nav-links";
@@ -39,10 +40,8 @@ export function AppShell({
       <header className="sticky top-0 z-40 h-16 border-b bg-card">
         <div className="mx-auto flex h-full max-w-[1280px] items-center gap-6 px-4 sm:px-6 lg:px-8">
           <Link href="/" className="flex items-center gap-2 font-semibold">
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-small font-bold text-primary-foreground">
-              N
-            </span>
-            <span className="hidden sm:inline">{BRAND}</span>
+            <BrandMark />
+            <span className="max-sm:sr-only">{BRAND}</span>
           </Link>
           <NavLinks items={nav} />
           <div className="ml-auto flex items-center gap-3">

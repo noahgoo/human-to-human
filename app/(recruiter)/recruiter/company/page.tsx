@@ -6,7 +6,7 @@ import { CompanyLogo, PageHeader } from "@/components/shared/misc";
 import { CompanyProfileForm } from "@/components/recruiter/company-profile-form";
 import { VerificationBanner } from "@/components/recruiter/verification-banner";
 
-export const metadata = { title: "Company · NexusPulse" };
+export const metadata = { title: "Company" };
 
 export default async function CompanyPage() {
   const session = await requireRole("recruiter");

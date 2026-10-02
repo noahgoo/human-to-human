@@ -26,7 +26,7 @@ export function VerifyEmailPanel({ email }: { email: string }) {
 
   function continueDemo() {
     startTransition(async () => {
-      const result = await continueAfterVerify();
+      const result = await continueAfterVerify(email);
       if (result && !result.ok) toast.error(result.error.message);
     });
   }

@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { loadApplicantsPage } from "@/lib/data/pipeline";
-import { DEMO_RECRUITER_COMPANY_ID } from "@/lib/mock/db";
 
 describe("recruiter pipeline joins", () => {
-  it("attaches Jev sub-scores and repo rows for the Neighbor backend role", async () => {
-    const page = await loadApplicantsPage("job-neighbor-backend", DEMO_RECRUITER_COMPANY_ID, {
+  it("attaches Jev sub-scores and repo rows for the Redo full-stack role", async () => {
+    const page = await loadApplicantsPage("job-redo-fullstack", "co-redo", {
       status: "active",
       sort: "rank",
       minConfidence: null,

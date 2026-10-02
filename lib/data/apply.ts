@@ -5,9 +5,12 @@ import type { GithubReviewOutcome } from "@/lib/ai/jev/evaluate";
 import { CsvParseError, evaluateCandidate } from "@/lib/ai/jev/evaluate";
 import { JevError } from "@/lib/ai/jev/client";
 import { fitWriteup } from "@/lib/data/fit";
+import { findLiveIdempotentApply, getLiveApplicationForJob, getLiveJob, persistLiveApplication, sha256 } from "@/lib/data/live-store";
+import { loadStoredResumeText, usableResumeText } from "@/lib/data/resume";
 import { getTokenBalance } from "@/lib/data/tokens";
 import { loadPublicRepo, type LoadedRepo } from "@/lib/github/public-projects";
 import { db, newId } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Application, FitEvaluation, RepoEvaluation, TokenCost } from "@/lib/types";
 
 export interface ApplyBody {
@@ -63,8 +66,14 @@ export async function createApplication(input: {
   }
 
   const store = db();
-  const job = store.jobs.find((j) => j.id === input.jobId);
+  const live = isSupabaseConfigured();
+  const liveJob = live ? await getLiveJob(input.jobId) : null;
+  const job = liveJob ?? (live ? undefined : store.jobs.find((j) => j.id === input.jobId));
   if (!job) return fail(404, "NOT_FOUND", "We couldn't find that.");
+  const companyName = liveJob?.company.name ?? store.companies.find((c) => c.id === job.companyId)?.name ?? null;
+  const companyVerified = liveJob
+    ? liveJob.companyVerified
+    : store.companies.find((c) => c.id === job.companyId)?.verificationStatus === "verified";
 
   let repoUrl: string | null = null;
   if (job.isTechnical) {
@@ -92,6 +101,15 @@ export async function createApplication(input: {
     githubRepoUrl: repoUrl,
     expectedTokenCost: input.expectedTokenCost,
   });
+  const requestHash = sha256(fingerprint);
+  if (live) {
+    const prior = await findLiveIdempotentApply(input.applicantId, input.idempotencyKey.trim(), requestHash);
+    if (prior === "mismatch") return fail(409, "IDEMPOTENCY_KEY_REUSED", "Please try submitting again.");
+    if (prior) {
+      const after = await getTokenBalance(input.applicantId);
+      return { ok: true, status: 201, body: { applicationId: prior.applicationId, balanceAfter: after.balance } };
+    }
+  }
   const storageKey = `${input.applicantId}:${input.idempotencyKey.trim()}`;
   const existing = idempotencyStore().get(storageKey);
   if (existing) {
@@ -104,11 +122,13 @@ export async function createApplication(input: {
     }
   }
 
-  const company = store.companies.find((c) => c.id === job.companyId);
-  if (!company || company.verificationStatus !== "verified" || job.status !== "open") {
+  if (!companyVerified || job.status !== "open") {
     return fail(409, "JOB_NOT_OPEN", "This job is no longer accepting applications.");
   }
-  if (store.applications.some((a) => a.applicantId === input.applicantId && a.jobId === job.id)) {
+  const alreadyApplied = live
+    ? Boolean(await getLiveApplicationForJob(input.applicantId, job.id))
+    : store.applications.some((a) => a.applicantId === input.applicantId && a.jobId === job.id);
+  if (alreadyApplied) {
     return fail(409, "ALREADY_APPLIED", "You've already applied to this job.");
   }
   if (input.expectedTokenCost !== job.tokenCost) {
@@ -123,7 +143,7 @@ export async function createApplication(input: {
   const applicant = store.applicants.find((item) => item.id === input.applicantId);
   const profileCsv = applicant?.linkedin?.profileCsv;
   const richMediaCsv = applicant?.linkedin?.richMediaCsv;
-  const resumeText = applicant?.resume?.textContent ?? undefined;
+  const resumeText = (await loadStoredResumeText(input.applicantId)) ?? usableResumeText(applicant?.resume?.textContent);
   if (!profileCsv || !richMediaCsv || !resumeText) {
     return fail(422, "VALIDATION_FAILED", "A resume, LinkedIn profile, and rich media export are required.");
   }
@@ -157,7 +177,7 @@ export async function createApplication(input: {
   }
 
   const now = new Date().toISOString();
-  const written = fitWriteup(evaluation, job, Boolean(loadedRepo));
+  const written = fitWriteup(evaluation, job, Boolean(loadedRepo), companyName);
   const fit: FitEvaluation = {
     id: newId("fit"),
     jobId: job.id,
@@ -170,6 +190,31 @@ export async function createApplication(input: {
     sourceScores: written.sourceScores,
     createdAt: now,
   };
+  if (live) {
+    try {
+      const saved = await persistLiveApplication({
+        applicantId: input.applicantId,
+        job,
+        tokenCost: job.tokenCost,
+        githubRepoUrl: repoUrl,
+        idempotencyKey: input.idempotencyKey.trim(),
+        requestHash,
+        fit,
+        repo: loadedRepo ? { loaded: loadedRepo, review: evaluation.githubReview } : null,
+      });
+      const after = await getTokenBalance(input.applicantId);
+      const body: ApplyBody = { applicationId: saved.applicationId, balanceAfter: after.balance };
+      idempotencyStore().set(storageKey, { fingerprint, body });
+      return { ok: true, status: 201, body };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (/duplicate|unique|already/i.test(message)) {
+        return fail(409, "ALREADY_APPLIED", "You've already applied to this job.");
+      }
+      return fail(500, "INTERNAL", "Something went wrong on our side.");
+    }
+  }
+
   store.fitEvaluations.push(fit);
 
   const application: Application = {

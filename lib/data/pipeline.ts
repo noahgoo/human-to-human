@@ -1,5 +1,7 @@
 import "server-only";
 import { db } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { loadLivePipeline, type LivePipeline } from "@/lib/data/live-store";
 import { loadPipelineRowsFromSupabase } from "@/lib/data/pipeline-supabase";
 import { jevScoresFromFit } from "@/lib/data/scoring";
 import { rankScore } from "@/lib/ranking/bands";
@@ -148,12 +150,18 @@ export function applicantsQueryString(query: ApplicantsQuery, limit = query.limi
   return params.toString();
 }
 
+type PipelineSource = Pick<LivePipeline, "applications" | "applicants" | "fitEvaluations" | "repoEvaluations">;
+
 function findJob(jobId: string, companyId: string): Job | null {
   return db().jobs.find((item) => item.id === jobId && item.companyId === companyId) ?? null;
 }
 
 /** Null when the job is missing or belongs to another company. Pages render not-found from this. */
 export async function loadRecruiterJob(jobId: string, companyId: string): Promise<Job | null> {
+  if (isSupabaseConfigured()) {
+    const live = await loadLivePipeline(jobId, companyId);
+    return live?.job ?? null;
+  }
   return findJob(jobId, companyId);
 }
 
@@ -218,8 +226,8 @@ function toPublic(row: Scored): RankedApplicant {
   };
 }
 
-function buildRows(job: Job): Scored[] {
-  const store = db();
+function buildRows(job: Job, source?: PipelineSource): Scored[] {
+  const store = source ?? db();
   const rows: Scored[] = store.applications
     .filter((application) => application.jobId === job.id)
     .map((application) => {
@@ -364,10 +372,24 @@ export async function loadApplicantsPage(
   companyId: string,
   query: ApplicantsQuery,
 ): Promise<ApplicantsPageData | null> {
+  if (isSupabaseConfigured()) {
+    const live = await loadLivePipeline(jobId, companyId);
+    if (!live) return null;
+    return assembleApplicantsPage(live.job, buildRows(live.job, live), query, live.companyJobs);
+  }
   const job = findJob(jobId, companyId);
   if (!job) return null;
   await loadPipelineRowsFromSupabase(jobId, companyId);
   const all = buildRows(job);
+  return assembleApplicantsPage(job, all, query, companyJobs(companyId));
+}
+
+function assembleApplicantsPage(
+  job: Job,
+  all: Scored[],
+  query: ApplicantsQuery,
+  companyJobOptions: CompanyJobOption[],
+): ApplicantsPageData {
   const sort = effectiveSort(job, query.sort);
   const filtered = all.filter((row) => passesFilters(row, query)).sort(compareApplicants(sort));
   const tierCounts: Record<RankTier, number> = { 0: 0, 1: 0, 2: 0 };
@@ -387,7 +409,7 @@ export async function loadApplicantsPage(
     matchCount: filtered.length,
     tierCounts,
     counts: countsFor(all),
-    companyJobs: companyJobs(companyId),
+    companyJobs: companyJobOptions,
     nextCursor: hasMore ? slice[slice.length - 1]?.application.id ?? null : null,
   };
 }
@@ -398,9 +420,10 @@ export async function loadApplicantDetail(
   applicationId: string,
   query: ApplicantsQuery,
 ): Promise<ApplicantDetail | null> {
-  const job = findJob(jobId, companyId);
+  const live = isSupabaseConfigured() ? await loadLivePipeline(jobId, companyId) : null;
+  const job = live?.job ?? findJob(jobId, companyId);
   if (!job) return null;
-  const all = buildRows(job);
+  const all = buildRows(job, live ?? undefined);
   const row = all.find((item) => item.application.id === applicationId);
   if (!row) return null;
 
@@ -412,7 +435,7 @@ export async function loadApplicantDetail(
     index = ordered.findIndex((item) => item.application.id === applicationId);
   }
 
-  const person = db().applicants.find((item) => item.id === row.applicant.id);
+  const person = (live?.applicants ?? db().applicants).find((item) => item.id === row.applicant.id);
   const textContent = person?.resume?.textContent ?? null;
 
   return {

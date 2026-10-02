@@ -4,6 +4,9 @@ import type { FitPreview } from "@/lib/ai/jev/score";
 import type { FitSource } from "@/lib/ai/jev/agents";
 import { bandFor } from "@/lib/ranking/bands";
 import { db, newId } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLiveJob } from "@/lib/data/live-store";
+import { loadStoredResumeText, usableResumeText } from "@/lib/data/resume";
 import type { FitEvaluation, FitRequirement, Job } from "@/lib/types";
 
 const FRESH_MS = 24 * 60 * 60 * 1000;
@@ -110,14 +113,15 @@ export function fitWriteup(
   preview: FitPreview,
   job: Job,
   includesGithub: boolean,
+  companyName?: string | null,
 ): Pick<FitEvaluation, "explanation" | "requirements" | "sourceScores"> {
   const written = resultFromPreview(preview, job);
   if (!includesGithub) return written;
-  const company = db().companies.find((item) => item.id === job.companyId);
+  const company = companyName ?? db().companies.find((item) => item.id === job.companyId)?.name;
   return {
     requirements: written.requirements,
     sourceScores: written.sourceScores,
-    explanation: `Jev compared this candidate's resume, LinkedIn profile, rich media, and submitted GitHub repository with the ${job.title} role at ${company?.name ?? "the company"}.`,
+    explanation: `Jev compared this candidate's resume, LinkedIn profile, rich media, and submitted GitHub repository with the ${job.title} role at ${company ?? "the company"}.`,
   };
 }
 
@@ -182,12 +186,14 @@ export async function runJevFit(jobId: string, applicantId: string, recheck: boo
 
 async function scoreAndStore(jobId: string, applicantId: string): Promise<FitEvaluation> {
   const store = db();
-  const job = store.jobs.find((item) => item.id === jobId);
+  const mockJob = store.jobs.find((item) => item.id === jobId);
+  const liveJob = !mockJob && isSupabaseConfigured() ? await getLiveJob(jobId) : null;
+  const job = mockJob ?? liveJob;
   const applicant = store.applicants.find((item) => item.id === applicantId);
   if (!job || !applicant) throw new Error("NOT_FOUND");
   const profileCsv = applicant.linkedin?.profileCsv;
   const richMediaCsv = applicant.linkedin?.richMediaCsv;
-  const resumeText = applicant.resume?.textContent ?? undefined;
+  const resumeText = (await loadStoredResumeText(applicantId)) ?? usableResumeText(applicant.resume?.textContent);
   if (!profileCsv || !richMediaCsv || !resumeText) {
     throw new Error("MISSING_EVIDENCE");
   }

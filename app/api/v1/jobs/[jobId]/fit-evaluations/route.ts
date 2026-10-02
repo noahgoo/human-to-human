@@ -16,7 +16,7 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
   if (!auth.ok) return apiError(auth.status, auth.code);
 
   const { jobId } = await context.params;
-  const job = getJobForApplicant(jobId, auth.session.userId);
+  const job = await getJobForApplicant(jobId, auth.session.userId);
   if (!job || job.status !== "open") return apiError(404, "NOT_FOUND");
 
   let recheck = false;

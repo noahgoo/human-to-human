@@ -4,7 +4,7 @@ import { BRAND } from "@/lib/copy";
 import { Button } from "@/components/ui/button";
 import { ConfirmWorkEmailForm } from "./confirm-form";
 
-export const metadata = { title: `Confirm work email · ${BRAND}` };
+export const metadata = { title: "Confirm work email" };
 
 export default async function VerifyWorkEmailPage({ searchParams }: { searchParams: Promise<{ token?: string }> }) {
   const session = await requireUser();

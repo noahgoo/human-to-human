@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import { BRAND } from "@/lib/copy";
 import { Providers } from "./providers";
 import "./globals.css";
 
@@ -18,7 +19,10 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "NexusPulse",
+  title: {
+    default: BRAND,
+    template: `%s · ${BRAND}`,
+  },
   description: "High-signal job matching: check your fit for free, apply with credits.",
 };
 

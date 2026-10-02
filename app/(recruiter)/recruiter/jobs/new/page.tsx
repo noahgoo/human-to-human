@@ -9,7 +9,7 @@ import { canPublish, getCompany } from "@/lib/data/companies";
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Post a job · NexusPulse" };
+export const metadata = { title: "Post a job" };
 
 const DEFAULTS: JobInput = {
   title: "",

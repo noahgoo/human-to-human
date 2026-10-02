@@ -110,7 +110,7 @@ export function jobColumns(j: Partial<Job>) {
 // ---------- fit evaluations ----------
 
 export const FIT_COLS =
-  "id, job_id, applicant_id, status, confidence_score, band, explanation, requirements, created_at";
+  "id, job_id, applicant_id, status, confidence_score, band, explanation, requirements, sub_scores, created_at";
 
 export interface FitRow {
   id: string;
@@ -121,6 +121,7 @@ export interface FitRow {
   band: FitEvaluation["band"];
   explanation: string | null;
   requirements: Array<{ text: string; status: FitRequirement["met"]; evidence: string | null }> | null;
+  sub_scores: FitEvaluation["sourceScores"] | null;
   created_at: string;
 }
 
@@ -134,6 +135,7 @@ export function toFit(r: FitRow): FitEvaluation {
     band: r.band,
     explanation: r.explanation,
     requirements: (r.requirements ?? []).map((q) => ({ requirement: q.text, met: q.status, evidence: q.evidence ?? null })),
+    sourceScores: r.sub_scores ?? undefined,
     createdAt: r.created_at,
   };
 }

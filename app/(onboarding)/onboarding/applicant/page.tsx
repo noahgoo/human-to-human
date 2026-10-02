@@ -5,7 +5,7 @@ import { OnboardingStepper } from "@/components/onboarding/onboarding-stepper";
 import { ReviewStep } from "./review-step";
 import { UploadStep } from "./upload-step";
 
-export const metadata: Metadata = { title: "Set up your profile · NexusPulse" };
+export const metadata: Metadata = { title: "Set up your profile" };
 
 export default async function ApplicantOnboardingPage({
   searchParams,

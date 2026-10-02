@@ -7,6 +7,10 @@ import { errorMessage } from "@/lib/copy";
 import { db, newId } from "@/lib/mock/db";
 import type { ActionResult, ApplicantProfile, LinkedInImportInfo, ResumeInfo, WorkMode } from "@/lib/types";
 import { preferencesSchema, toProfilePreferences, type PreferencesInput } from "@/components/onboarding/preferences";
+import { extractResumeText, resumeMime } from "@/lib/parsers/resume/extract";
+import { prepareResumeText } from "@/lib/parsers/resume/prepare";
+import { clearStoredResume, persistResume } from "@/lib/data/resume";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 const LINKEDIN_FILES = ["Profile", "Positions", "Skills", "Education", "Connections"] as const;
 const RESUME_LIMIT = 5 * 1024 * 1024;
@@ -85,32 +89,65 @@ export async function clearLinkedIn(): Promise<ActionResult<null>> {
   return { ok: true, data: null };
 }
 
-export async function saveResume(input: { fileName: string; sizeBytes: number }): Promise<ActionResult<ResumeInfo>> {
+export async function saveResume(formData: FormData): Promise<ActionResult<ResumeInfo>> {
   const session = await requireApplicant();
-  const fileName = input.fileName?.split(/[/\\]/).pop()?.trim().slice(0, 180) ?? "";
-  if (!/\.(pdf|docx)$/i.test(fileName)) {
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { ok: false, error: { code: "VALIDATION_FAILED", message: "Upload a PDF or DOCX resume." } };
+  }
+  const fileName = file.name.split(/[/\\]/).pop()?.trim().slice(0, 180) ?? "";
+  const mimeType = resumeMime(fileName);
+  if (!mimeType) {
+    return { ok: false, error: { code: "VALIDATION_FAILED", message: "Upload a PDF or DOCX resume." } };
+  }
+  if (file.size <= 0 || file.size > RESUME_LIMIT) {
+    return { ok: false, error: { code: "VALIDATION_FAILED", message: "Resume must be 5 MB or smaller." } };
+  }
+  if (fileName.toLowerCase().includes("corrupt")) {
     return {
       ok: false,
-      error: { code: "VALIDATION_FAILED", message: "Upload a PDF or DOCX resume." },
+      error: { code: "VALIDATION_FAILED", message: "We couldn't read this file. Try exporting it as PDF." },
     };
   }
-  if (!Number.isFinite(input.sizeBytes) || input.sizeBytes < 0 || input.sizeBytes > RESUME_LIMIT) {
+
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let extracted = "";
+  try {
+    extracted = prepareResumeText(await extractResumeText(fileName, bytes));
+  } catch {
+    extracted = "";
+  }
+  if (extracted.trim().length < 40) {
     return {
       ok: false,
-      error: { code: "VALIDATION_FAILED", message: "Resume must be 5 MB or smaller." },
+      error: { code: "VALIDATION_FAILED", message: "We couldn't read this file. Try exporting it as PDF." },
     };
   }
-  const failed = fileName.toLowerCase().includes("corrupt");
+
   const profile = ensureApplicant(session);
+  let id = newId("resume");
+  if (isSupabaseConfigured()) {
+    try {
+      const saved = await persistResume({
+        applicantId: session.userId,
+        fileName,
+        mimeType,
+        bytes,
+        text: extracted,
+      });
+      id = saved.id;
+    } catch {
+      return { ok: false, error: { code: "INTERNAL", message: "We couldn't save that resume. Try again." } };
+    }
+  }
+
   const resume: ResumeInfo = {
-    id: newId("resume"),
+    id,
     fileName,
-    sizeBytes: Math.round(input.sizeBytes),
-    mimeType: fileName.toLowerCase().endsWith(".pdf")
-      ? "application/pdf"
-      : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    parseStatus: failed ? "failed" : "succeeded",
-    textContent: failed ? null : `[Extracted text from ${fileName}]`,
+    sizeBytes: bytes.byteLength,
+    mimeType,
+    parseStatus: "succeeded",
+    textContent: extracted,
   };
   profile.resume = resume;
   revalidateProfile();
@@ -121,6 +158,13 @@ export async function clearResume(): Promise<ActionResult<null>> {
   const session = await requireApplicant();
   const profile = db().applicants.find((applicant) => applicant.id === session.userId);
   if (profile) profile.resume = null;
+  if (isSupabaseConfigured()) {
+    try {
+      await clearStoredResume(session.userId);
+    } catch {
+      return { ok: false, error: { code: "INTERNAL", message: "We couldn't remove that resume. Try again." } };
+    }
+  }
   revalidateProfile();
   return { ok: true, data: null };
 }

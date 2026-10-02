@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { RoleForm } from "./role-form";
 
-export const metadata: Metadata = { title: "Choose your role · NexusPulse" };
+export const metadata: Metadata = { title: "Choose your role" };
 
 export default function RolePage() {
   return (

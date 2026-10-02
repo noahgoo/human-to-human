@@ -13,7 +13,7 @@ import { getRecruiterJobsDashboard, type RecruiterJobListItem } from "@/lib/data
 
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Jobs · NexusPulse" };
+export const metadata = { title: "Jobs" };
 
 export default async function RecruiterJobsPage({
   searchParams,

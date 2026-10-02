@@ -1,4 +1,5 @@
 import { Code2, Coins, Users } from "lucide-react";
+import { BrandMark } from "@/components/brand-mark";
 import { BRAND } from "@/lib/copy";
 
 const POINTS = [
@@ -27,9 +28,7 @@ export function ValuePanel() {
     <aside className="flex flex-col border-b bg-muted p-5 sm:p-8 lg:col-span-5 lg:border-r lg:border-b-0 lg:p-12">
       <div>
         <div className="mb-6 flex items-center gap-2.5 lg:mb-8">
-          <span className="flex size-9 items-center justify-center rounded-md bg-primary text-small font-bold text-primary-foreground">
-            N
-          </span>
+          <BrandMark size={36} />
           <span className="text-h3 font-bold tracking-tight">{BRAND}</span>
         </div>
         <h1 className="text-h2 leading-snug sm:text-h1">Career connections built for tech talent.</h1>

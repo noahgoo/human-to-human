@@ -9,7 +9,7 @@ import { requireUser } from "@/lib/auth/session";
 import type { Role } from "@/lib/types";
 import { DangerZone, ExportCard, PasswordCard } from "./settings-client";
 
-export const metadata: Metadata = { title: "Settings · NexusPulse" };
+export const metadata: Metadata = { title: "Settings" };
 
 function roleLabel(role: Role | null) {
   if (role === "recruiter") return "Recruiter";

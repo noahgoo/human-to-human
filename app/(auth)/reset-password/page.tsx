@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ResetPasswordForm } from "@/components/auth/reset-password-form";
 
-export const metadata: Metadata = { title: "Reset password · NexusPulse" };
+export const metadata: Metadata = { title: "Reset password" };
 
 export default function ResetPasswordPage() {
   return (

@@ -1,6 +1,6 @@
 import type { VerificationStatus } from "@/lib/types";
 
-export const SUPPORT_EMAIL = "support@nexuspulse.dev";
+export const SUPPORT_EMAIL = "support@known.dev";
 export const SUPPORT_HREF = `mailto:${SUPPORT_EMAIL}`;
 
 export function VerificationBanner({ status }: { status: VerificationStatus | null }) {

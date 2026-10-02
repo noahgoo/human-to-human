@@ -4,7 +4,7 @@ import { getApplicantProfile } from "@/lib/data/profile";
 import { PageHeader } from "@/components/shared/misc";
 import { ProfileEditor } from "./profile-editor";
 
-export const metadata: Metadata = { title: "Profile · NexusPulse" };
+export const metadata: Metadata = { title: "Profile" };
 
 export default async function ProfilePage() {
   const session = await requireRole("applicant");

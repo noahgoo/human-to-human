@@ -14,13 +14,13 @@ import type { ApplyJob } from "@/components/applications/apply-dialog";
 export default async function JobDetailPage({ params }: { params: Promise<{ jobId: string }> }) {
   const session = await requireRole("applicant");
   const { jobId } = await params;
-  const job = getJobForApplicant(jobId, session.userId);
+  const job = await getJobForApplicant(jobId, session.userId);
   if (!job) notFound();
 
   const [balance, application, fits, hasLinkedIn] = await Promise.all([
     getTokenBalance(session.userId),
-    Promise.resolve(getApplicationForJob(session.userId, job.id)),
-    Promise.resolve(getLatestSucceededFits(session.userId)),
+    getApplicationForJob(session.userId, job.id),
+    getLatestSucceededFits(session.userId),
     Promise.resolve(applicantHasLinkedIn(session.userId)),
   ]);
 

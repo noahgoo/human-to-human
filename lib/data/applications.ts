@@ -1,6 +1,8 @@
 import "server-only";
 import type { ApplicationStatus, EvaluationStatus, RepoCategory, TokenCost, WorkMode } from "@/lib/types";
 import { db } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLiveMyApplication, listLiveMyApplications } from "@/lib/data/live-store";
 import { jevScoresFromFit, type SavedJevScores } from "@/lib/data/scoring";
 
 export type { SavedJevScores };
@@ -47,6 +49,7 @@ export interface MyApplicationDetail {
 }
 
 export async function listMyApplications(applicantId: string): Promise<MyApplicationListItem[]> {
+  if (isSupabaseConfigured()) return listLiveMyApplications(applicantId);
   const store = db();
   return store.applications
     .filter((application) => application.applicantId === applicantId)
@@ -68,6 +71,7 @@ export async function listMyApplications(applicantId: string): Promise<MyApplica
 }
 
 export async function getMyApplication(applicantId: string, applicationId: string): Promise<MyApplicationDetail | null> {
+  if (isSupabaseConfigured()) return getLiveMyApplication(applicantId, applicationId);
   const store = db();
   const application = store.applications.find((item) => item.id === applicationId);
   if (!application || application.applicantId !== applicantId) return null;

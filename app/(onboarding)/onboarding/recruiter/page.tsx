@@ -2,7 +2,7 @@ import { requireOnboarding } from "@/lib/auth/session";
 import { inspectWorkEmail } from "@/lib/data/companies";
 import { ClaimForm } from "./claim-form";
 
-export const metadata = { title: "Verify your company · NexusPulse" };
+export const metadata = { title: "Verify your company" };
 
 export default async function RecruiterOnboardingPage() {
   const session = await requireOnboarding("recruiter");

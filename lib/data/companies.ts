@@ -1,6 +1,8 @@
 import "server-only";
 import type { Company, VerificationStatus } from "@/lib/types";
 import { db, delay } from "@/lib/mock/db";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getLiveCompany } from "@/lib/data/live-store";
 
 export type WorkEmailKind = "free_mail" | "has_recruiter" | "magic_link" | "admin_review" | "invalid_website";
 
@@ -80,6 +82,7 @@ export function inspectWorkEmail(input: { email: string; companyName: string; we
 }
 
 export async function getCompany(companyId: string): Promise<Company | null> {
+  if (isSupabaseConfigured()) return getLiveCompany(companyId);
   await delay();
   return db().companies.find((c) => c.id === companyId) ?? null;
 }

@@ -3,8 +3,9 @@ import Link from "next/link";
 import { DemoPersonas } from "@/components/auth/demo-personas";
 import { OAuthButtons, OrDivider } from "@/components/auth/oauth-buttons";
 import { SignInForm } from "@/components/auth/sign-in-form";
+import { BRAND } from "@/lib/copy";
 
-export const metadata: Metadata = { title: "Sign in · NexusPulse" };
+export const metadata: Metadata = { title: "Sign in" };
 
 export default function SignInPage() {
   return (
@@ -17,7 +18,7 @@ export default function SignInPage() {
       <OrDivider />
       <SignInForm />
       <p className="mt-6 border-t pt-5 text-center text-body text-copy">
-        New to NexusPulse?{" "}
+        New to {BRAND}?{" "}
         <Link
           href="/sign-up"
           className="font-semibold text-link outline-none hover:underline focus-visible:ring-3 focus-visible:ring-ring/50"

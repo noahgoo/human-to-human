@@ -4,7 +4,7 @@ import { OAuthButtons, OrDivider } from "@/components/auth/oauth-buttons";
 import { SignUpForm } from "@/components/auth/sign-up-form";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Create account · NexusPulse" };
+export const metadata: Metadata = { title: "Create account" };
 
 export default async function SignUpPage({ searchParams }: { searchParams: Promise<{ role?: string }> }) {
   const { role: roleParam } = await searchParams;

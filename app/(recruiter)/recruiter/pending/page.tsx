@@ -5,7 +5,7 @@ import { VerificationBanner, SUPPORT_HREF } from "@/components/recruiter/verific
 import { Button } from "@/components/ui/button";
 import { ResendButton } from "./resend-button";
 
-export const metadata = { title: "Verification pending · NexusPulse" };
+export const metadata = { title: "Verification pending" };
 
 export default async function PendingPage({ searchParams }: { searchParams: Promise<{ sent?: string }> }) {
   const session = await requireRole("recruiter");

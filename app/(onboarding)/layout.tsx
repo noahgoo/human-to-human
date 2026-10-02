@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { requireUser } from "@/lib/auth/session";
+import { BrandMark } from "@/components/brand-mark";
 import { BRAND } from "@/lib/copy";
 
 export default async function OnboardingLayout({ children }: { children: React.ReactNode }) {
@@ -20,9 +21,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
             href="/"
             className="flex items-center gap-2 rounded-md font-semibold outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <span className="flex size-8 items-center justify-center rounded-md bg-primary text-small font-bold text-primary-foreground">
-              N
-            </span>
+            <BrandMark />
             <span>{BRAND}</span>
           </Link>
           <form action="/auth/sign-out" method="post">

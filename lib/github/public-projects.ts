@@ -156,7 +156,7 @@ async function fetchCommitSha(
 function githubHeaders(): HeadersInit {
   return {
     Accept: "application/vnd.github+json",
-    "User-Agent": "nexuspulse-fit",
+    "User-Agent": "known-fit",
     ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
   };
 }

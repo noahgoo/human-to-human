@@ -32,7 +32,7 @@ export async function generateMetadata({
   const { applicationId } = await params;
   const session = await requireRole("applicant");
   const application = await getMyApplication(session.userId, applicationId);
-  return { title: application ? `${application.jobTitle} · NexusPulse` : "Application · NexusPulse" };
+  return { title: application ? application.jobTitle : "Application" };
 }
 
 export default async function ApplicationDetailPage({

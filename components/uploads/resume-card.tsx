@@ -67,7 +67,9 @@ export function ResumeCard({
       if (controller.signal.aborted) return;
       setPhase("processing");
       await sleep(1200, controller.signal);
-      const saved = await saveResume({ fileName: file.name, sizeBytes: file.size });
+      const body = new FormData();
+      body.append("file", file);
+      const saved = await saveResume(body);
       if (controller.signal.aborted) return;
       if (!saved.ok) {
         setError(saved.error.message);

@@ -1,6 +1,6 @@
 // All user-facing terminology. The UI says "credits"; code says `token` (D-35/D-37).
 
-export const BRAND = "NexusPulse";
+export const BRAND = "Known";
 
 export const CREDIT = { one: "credit", other: "credits", title: "Credits" } as const;
 

@@ -4,9 +4,9 @@
 // `now() - interval '...'`.
 //
 // Cast:
-//   Carter Lee  onboarded applicant, applied to Neighbor, Waystar and Redo
+//   Carter Lee  onboarded applicant, applied to Waystar and Redo
 //   Noah Goo    new applicant (goes through onboarding)
-//   Steve       verified recruiter at Neighbor, owns the ranked pipeline below
+//   Steve       verified recruiter at Redo, login stays steve@neighbor.com
 //   Admin       platform admin
 import type {
   Application,
@@ -30,7 +30,7 @@ export const DEMO_NEW_APPLICANT_ID = "user-noah";
 export const DEMO_RECRUITER_ID = "user-steve";
 export const DEMO_NEW_RECRUITER_ID = "user-sam";
 export const DEMO_ADMIN_ID = "user-admin";
-export const DEMO_RECRUITER_COMPANY_ID = "co-neighbor";
+export const DEMO_RECRUITER_COMPANY_ID = "co-redo";
 
 const DEMO_PROFILE_CSV = `First Name,Last Name,Headline,Summary,Industry
 Carter,Lee,Software Engineer · Backend and data,"Built event-driven messaging services in Go and TypeScript handling 20M events/day. Moved billing reports to Postgres materialized views, cutting load time 60%. Previously built React dashboards and an internal design system.",Software
@@ -91,7 +91,7 @@ export const companies: Company[] = [
 ];
 
 export const recruiterMemberships: RecruiterMembership[] = [
-  { recruiterId: DEMO_RECRUITER_ID, companyId: "co-neighbor", verificationStatus: "verified", workEmail: "steve@neighbor.com" },
+  { recruiterId: DEMO_RECRUITER_ID, companyId: "co-redo", verificationStatus: "verified", workEmail: "steve@getredo.com" },
 ];
 
 /** `blocked_email_domains`: free-mail providers that can't verify a company. */
@@ -122,6 +122,15 @@ export const jobs: Job[] = [
     publishedAt: null, createdAt: daysAgo(2), updatedAt: daysAgo(2),
   },
   {
+    id: "job-neighbor-product", companyId: "co-neighbor", title: "Software Engineer, Product",
+    description:
+      "Neighbor is building the largest storage and parking marketplace in the country. Hosts earn money from unused garages, driveways, and spare rooms, and renters find space close to home.\n\nWe're hiring an early-career software engineer to build the product hosts and renters use every day.\n\nWhat you'll do:\n- Ship TypeScript and React features across the host and renter apps\n- Add AI-assisted tools that help hosts write listings and answer renter questions\n- Build interactive product UI, not just forms and tables\n- Own tests and CI so we can ship changes without breaking bookings\n- Treat application security as part of the job on a marketplace that stores personal spaces and payments",
+    requirements:
+      "- Shipped a web product in TypeScript and React (Next.js counts)\n- Built an AI or LLM feature into a real product\n- Testing or CI/CD experience from an internship, team, or project\n- Internship or project work in application security, internal tools, or automation\n- Comfort taking an idea from concept to a working product",
+    location: "Lehi, UT", workMode: "hybrid", tokenCost: 2, isTechnical: true, status: "open",
+    publishedAt: daysAgo(1), createdAt: daysAgo(1), updatedAt: daysAgo(1),
+  },
+  {
     id: "job-waystar-claims", companyId: "co-waystar", title: "Software Engineer II, Claims Platform",
     description:
       "Waystar's cloud platform helps more than a million providers get paid faster, from patient estimates and eligibility to claims and remittance.\n\nWhat you'll do:\n- Build services that process millions of healthcare claims a day\n- Improve claim status and denial workflows\n- Keep PHI secure and HIPAA compliant",
@@ -147,6 +156,15 @@ export const jobs: Job[] = [
       "- 3+ years of full-stack TypeScript (React and Node.js)\n- Experience with Shopify apps or e-commerce APIs\n- Postgres and background job systems",
     location: "Provo, UT", workMode: "onsite", tokenCost: 3, isTechnical: true, status: "open",
     publishedAt: daysAgo(4), createdAt: daysAgo(6), updatedAt: daysAgo(4),
+  },
+  {
+    id: "job-redo-product", companyId: "co-redo", title: "Software Engineer, Returns Product",
+    description:
+      "Redo helps e-commerce brands turn returns into exchanges and recover revenue, with a returns portal, shipping protection, and post-purchase tools built for Shopify.\n\nWe're hiring an early-career software engineer to build the product merchants and shoppers use after checkout.\n\nWhat you'll do:\n- Ship TypeScript and React features across the returns portal and merchant dashboard\n- Add AI-assisted tools that help merchants write return policies and answer shopper questions\n- Build interactive product UI, not just forms and tables\n- Own tests and CI so we can ship changes without breaking exchanges\n- Treat application security as part of the job on a platform that handles orders, refunds, and customer data",
+    requirements:
+      "- Shipped a web product in TypeScript and React (Next.js counts)\n- Built an AI or LLM feature into a real product\n- Testing or CI/CD experience from an internship, team, or project\n- Internship or project work in application security, internal tools, or automation\n- Comfort taking an idea from concept to a working product",
+    location: "Provo, UT", workMode: "hybrid", tokenCost: 2, isTechnical: true, status: "open",
+    publishedAt: daysAgo(1), createdAt: daysAgo(1), updatedAt: daysAgo(1),
   },
   {
     id: "job-redo-merchant-success", companyId: "co-redo", title: "Merchant Success Manager",
@@ -243,18 +261,18 @@ export const connections: Connection[] = [
 
 // ---------- applications (+ application_events) ----------
 //
-// Steve's pipeline for job-neighbor-backend covers every ranking state:
+// Steve's pipeline for job-redo-fullstack covers every ranking state:
 //   Avery   shortlisted, complete     Morgan  repo review running (incomplete)
 //   Carter  submitted, complete       Riley   repo review failed (incomplete)
 //   Sam     submitted, complete       Taylor  rejected
-// Carter spends 5 credits this month (3 Neighbor + 2 Waystar), so 5 of 10 are left.
+// Carter spends 5 credits this month (3 Redo + 2 Waystar), so 5 of 10 are left.
 // His Redo application is in the previous period and doesn't count.
 
 const submitted = (at: string): Application["events"] => [{ fromStatus: null, toStatus: "submitted", at }];
 
 export const applications: Application[] = [
   {
-    id: "app-carter-neighbor", jobId: "job-neighbor-backend", applicantId: DEMO_APPLICANT_ID, status: "submitted", tokenCost: 3,
+    id: "app-carter-neighbor", jobId: "job-redo-fullstack", applicantId: DEMO_APPLICANT_ID, status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/carterlee/storage-search", fitEvaluationId: "fit-carter-neighbor",
     submittedAt: thisMonth(30), updatedAt: thisMonth(30), events: submitted(thisMonth(30)),
   },
@@ -272,7 +290,7 @@ export const applications: Application[] = [
     ],
   },
   {
-    id: "app-avery-neighbor", jobId: "job-neighbor-backend", applicantId: "user-avery", status: "shortlisted", tokenCost: 3,
+    id: "app-avery-neighbor", jobId: "job-redo-fullstack", applicantId: "user-avery", status: "shortlisted", tokenCost: 3,
     githubRepoUrl: "https://github.com/averychen/booking-api", fitEvaluationId: "fit-avery-neighbor",
     submittedAt: hoursAgo(70), updatedAt: hoursAgo(5),
     events: [
@@ -281,22 +299,22 @@ export const applications: Application[] = [
     ],
   },
   {
-    id: "app-sam-neighbor", jobId: "job-neighbor-backend", applicantId: "user-sam-patel", status: "submitted", tokenCost: 3,
+    id: "app-sam-neighbor", jobId: "job-redo-fullstack", applicantId: "user-sam-patel", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/sampatel/geo-index", fitEvaluationId: "fit-sam-neighbor",
     submittedAt: hoursAgo(50), updatedAt: hoursAgo(50), events: submitted(hoursAgo(50)),
   },
   {
-    id: "app-morgan-neighbor", jobId: "job-neighbor-backend", applicantId: "user-morgan", status: "submitted", tokenCost: 3,
+    id: "app-morgan-neighbor", jobId: "job-redo-fullstack", applicantId: "user-morgan", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/morgandiaz/listing-search", fitEvaluationId: "fit-morgan-neighbor",
     submittedAt: hoursAgo(3), updatedAt: hoursAgo(3), events: submitted(hoursAgo(3)),
   },
   {
-    id: "app-riley-neighbor", jobId: "job-neighbor-backend", applicantId: "user-riley", status: "submitted", tokenCost: 3,
+    id: "app-riley-neighbor", jobId: "job-redo-fullstack", applicantId: "user-riley", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/rileybrooks/payouts-service", fitEvaluationId: "fit-riley-neighbor",
     submittedAt: hoursAgo(26), updatedAt: hoursAgo(26), events: submitted(hoursAgo(26)),
   },
   {
-    id: "app-taylor-neighbor", jobId: "job-neighbor-backend", applicantId: "user-taylor", status: "rejected", tokenCost: 3,
+    id: "app-taylor-neighbor", jobId: "job-redo-fullstack", applicantId: "user-taylor", status: "rejected", tokenCost: 3,
     githubRepoUrl: "https://github.com/taylorkim/todo-api", fitEvaluationId: "fit-taylor-neighbor",
     submittedAt: hoursAgo(90), updatedAt: hoursAgo(40),
     events: [
@@ -317,7 +335,7 @@ const neighborReqs = {
 
 const fitEvaluationRows: FitEvaluation[] = [
   {
-    id: "fit-carter-neighbor", jobId: "job-neighbor-backend", applicantId: DEMO_APPLICANT_ID, status: "succeeded",
+    id: "fit-carter-neighbor", jobId: "job-redo-fullstack", applicantId: DEMO_APPLICANT_ID, status: "succeeded",
     confidenceScore: 84, band: "good", createdAt: thisMonth(31),
     explanation:
       "Strong backend fit: Carter runs high-volume Go and TypeScript services at Podium and has real Postgres performance work. Geospatial search isn't evidenced, and he has about 4 years of experience against the 5+ asked. Two connections at Neighbor, including an engineering manager.",
@@ -340,7 +358,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-avery-neighbor", jobId: "job-neighbor-backend", applicantId: "user-avery", status: "succeeded",
+    id: "fit-avery-neighbor", jobId: "job-redo-fullstack", applicantId: "user-avery", status: "succeeded",
     confidenceScore: 92, band: "strong", createdAt: hoursAgo(71),
     explanation:
       "Direct match: Avery led booking and payouts for a two-sided rental marketplace in Go and built geospatial availability search on PostGIS.",
@@ -352,7 +370,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-sam-neighbor", jobId: "job-neighbor-backend", applicantId: "user-sam-patel", status: "succeeded",
+    id: "fit-sam-neighbor", jobId: "job-redo-fullstack", applicantId: "user-sam-patel", status: "succeeded",
     confidenceScore: 76, band: "good", createdAt: hoursAgo(51),
     explanation: "Production Go and Postgres experience with payments exposure at Weave. No search or geospatial work, and no marketplace background.",
     requirements: [
@@ -363,7 +381,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-morgan-neighbor", jobId: "job-neighbor-backend", applicantId: "user-morgan", status: "succeeded",
+    id: "fit-morgan-neighbor", jobId: "job-redo-fullstack", applicantId: "user-morgan", status: "succeeded",
     confidenceScore: 88, band: "strong", createdAt: hoursAgo(4),
     explanation: "Deep listing search and geospatial ranking experience at Zillow, at high scale. Marketplace experience is adjacent rather than two-sided.",
     requirements: [
@@ -374,7 +392,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-riley-neighbor", jobId: "job-neighbor-backend", applicantId: "user-riley", status: "succeeded",
+    id: "fit-riley-neighbor", jobId: "job-redo-fullstack", applicantId: "user-riley", status: "succeeded",
     confidenceScore: 66, band: "moderate", createdAt: hoursAgo(27),
     explanation: "Node.js payments experience at Divvy is relevant, but seniority is below the bar and search work isn't evidenced.",
     requirements: [
@@ -385,7 +403,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-taylor-neighbor", jobId: "job-neighbor-backend", applicantId: "user-taylor", status: "succeeded",
+    id: "fit-taylor-neighbor", jobId: "job-redo-fullstack", applicantId: "user-taylor", status: "succeeded",
     confidenceScore: 48, band: "limited", createdAt: hoursAgo(91),
     explanation: "Agency full-stack work with small-scale MySQL APIs. Little evidence of backend services at scale, Postgres, or marketplaces.",
     requirements: [

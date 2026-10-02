@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function generateMetadata({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
-  return { title: `Edit job · ${jobId} · NexusPulse` };
+  return { title: `Edit job · ${jobId}` };
 }
 
 export default async function EditJobPage({ params }: { params: Promise<{ jobId: string }> }) {
