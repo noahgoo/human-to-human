@@ -16,11 +16,11 @@ Each item has a frontend default. We build with the default unless the Lead over
 |---|---|---|---|
 | F1 | **Middleware needs `role` and onboarding state without a DB round trip on every request.** | Supabase **Custom Access Token Hook** adds the claims `app_role`, `onboarded` (bool) and, for recruiters, `membership_status` to the JWT (names per backend.md B1; MASTER_PLAN D-24). After the role is set or onboarding finishes, the client calls `supabase.auth.refreshSession()`. Layout guards (`requireRole`, `requireOnboarded`) stay authoritative. | Data (hook function + grant), Backend (guards) |
 | F2 | **`jobs` has no location / work mode.** All job cards in Stitch show location and "Remote". | Add `jobs.location text null` and `jobs.work_mode` (`remote`/`hybrid`/`onsite`, null allowed) to MVP. Compensation stays **Later** (§7). | Data, Lead (decision log) |
-| F3 | **Applicant onboarding completion.** The spec says onboarding uploads LinkedIn data *and* a resume. The design has "Skip for now". | **Resume is required** to finish onboarding (`onboarded_at` set). The LinkedIn export is **strongly recommended but skippable**: Check fit then runs on the resume only, and the connections list shows "Upload your LinkedIn export to see connections". Skipping can be reversed from `/profile`. | Lead (spec interpretation), Backend (fit prompt must tolerate a null `linkedin_import_id`) |
+| F3 | **Applicant onboarding completion.** The spec says onboarding uploads LinkedIn data *and* a resume. The design has "Skip for now". | **Both are required** (product owner, MASTER_PLAN D-39): a **succeeded LinkedIn import** (at least one recognised file) **and** a parsed resume. The Stitch "Skip for now" control is removed. | **Resolved (D-39)** |
 | F4 | **Check-fit response shape.** Connections are "shown immediately, alongside the score". | **Resolved (MASTER_PLAN D-22):** connections are **not** embedded in the fit response. `CheckFitPanel` calls `GET /api/v1/jobs/{jobId}/connections` in parallel with the fit POST, so they still render immediately. | Resolved |
 | F5 | **Job list needs the applicant's latest fit per job** so cards can show `MatchScoreBadge` without a click. | A view or RPC `my_latest_fit_evaluations(job_ids uuid[])` that returns the latest `succeeded` row per job plus an `is_stale` flag (input hash no longer matches). The RSC loader calls it once per page. | Data |
 | F6 | **Uploads must not pass through Vercel functions** (4.5 MB request-body limit, and resumes can be 5 MB). | Upload `init` returns a Supabase **signed upload URL**. The browser `PUT`s the file straight to Storage with XHR (so we get progress events), then calls `complete`. | Backend (init/complete endpoints), Data (bucket policies) |
-| F7 | **Terminology.** Spec and code say "tokens". All 5 designs say "Credits". | **UI copy says "credits"; code, DB and API say `token`.** See §2.6. | Lead to confirm with the user |
+| F7 | **Terminology.** Spec and code say "tokens". All 5 designs say "Credits". | **UI copy says "Credits"; code, DB and API say `token`.** See §2.6. | **Decided by the product owner (D-37)** |
 | F8 | **Can recruiters see an applicant's LinkedIn positions, education and skills?** | **Resolved: no.** Recruiters see the **resume only** (data.md §7 matrix, applicant-ranking §2.8). There is no `LinkedInSummary` in MVP. | Resolved (Data) |
 | F9 | **Editing a job after people applied.** Changing `token_cost` or `is_technical` would be unfair to existing applicants. | Once a job has ≥1 application, `token_cost` and `is_technical` are read-only in the edit form, and the server rejects changes with `CONFLICT`. | Backend |
 | F10 | **Application status transitions.** | **Adopted from data.md `set_application_status`:** `submitted ⇄ shortlisted`, `submitted|shortlisted → rejected`, `rejected → shortlisted`, and never out of `withdrawn`. UI: Shortlist and Reject in the list. "Move back to New" and "Reconsider (shortlist)" appear on the detail page only, and Reconsider warns that the applicant already got a rejection email. **Withdraw is MVP:** `withdrawApplication` exists in Backend and Data. It appears on `/applications/[id]` for `submitted`/`shortlisted`, with a confirm dialog: "Credits are not refunded." | Resolved (Data, Backend) |
@@ -30,7 +30,7 @@ Each item has a frontend default. We build with the default unless the Lead over
 | F14 | **LinkedIn import polling.** | `GET /api/v1/linkedin-imports/{id}` → `{ status, filesPresent, counts: {connections, companies, positions, skills, education}, error }`. Same pattern for `GET /api/v1/resumes/{id}` → `{ parseStatus, error }`. | Backend, Data |
 | F15 | **Admin queue UI** (`/admin/companies`). | Frontend builds a minimal table page in Phase 2. There is no design for it. | Lead (confirm in MVP) |
 | F16 | **Resume viewer vs Backend B5** (resumes are served with `Content-Disposition: attachment` because there is no AV scan in MVP). | The viewer is **text-first**: extracted `text_content` in a scroll panel, plus a "Download original" button that calls `getResumeUrl` (60 s, attachment). **No inline PDF iframe in MVP.** It comes Later, together with the ClamAV step, as a sandboxed iframe. The detail payload must therefore include `resume {available, fileName, mimeType, sizeBytes, textContent}`. | Data/Backend (add these fields to the detail read) |
-| F17 | **Applicant onboarding gate vs `mark_onboarded()`.** data.md requires a succeeded LinkedIn import. Frontend F3 lets the applicant skip LinkedIn. | Frontend keeps F3, so `mark_onboarded()` must accept resume-only. Otherwise remove "Skip LinkedIn" from the UI. | **Resolved (MASTER_PLAN D-08):** F3 stands; `mark_onboarded()` requires only a parsed resume. |
+| F17 | **Applicant onboarding gate vs `mark_onboarded()`.** data.md requires a succeeded LinkedIn import. Frontend F3 lets the applicant skip LinkedIn. | No skip in the UI; `mark_onboarded()` requires both. | **Resolved (D-39).** |
 
 ### 1.2 Spec items with no Stitch design
 
@@ -43,7 +43,7 @@ All of these follow the design system (§2) and reuse §4 components.
 | Applicant detail + resume viewer | `/recruiter/jobs/[jobId]/applicants/[applicationId]` | Two-column layout: left has the rank breakdown, fit explanation, `RepoScoreCard` (full) and status history. Right has `ResumeViewer` (text-first plus "Download original" via a 60 s signed URL; F16). |
 | Check-fit result UI | `CheckFitPanel` (Sheet from `JobCard`, inline on `/jobs/[jobId]`) | Four states: idle, pending (polling), result (score, band, explanation, connections) and failed. Details in §6.2. |
 | GitHub repo prompt in Apply | `ApplyDialog` step 1 (technical jobs only) | URL field with a notice: public repos only, the code is read and never run, **ratings go to the recruiter only**. |
-| Recruiter onboarding / company verification | `/onboarding/recruiter`, `/recruiter/pending`, `/recruiter/company` | Form: company name, website, work email. The domain check result is shown inline. States: verified (go to jobs) and pending (go to the pending page). |
+| Recruiter onboarding / company verification | `/onboarding/recruiter`, `/recruiter/pending`, `/recruiter/company` | Form: company name, website, work email. The domain check result is shown inline. States: verified (go to jobs), pending (go to the pending page) and **blocked**: "This company already has a recruiter account" (D-44). |
 | Empty / loading / error states | every page | Matrix in §6.7. Each route has its own `loading.tsx` (skeleton) and `error.tsx`. |
 | Job detail (applicant) | `/jobs/[jobId]` | Not in Stitch. Title block like `JobCard`, then description, requirements, `CheckFitPanel` and the Apply CTA. |
 | Sign-up, password reset, email verification, role pick | `(auth)`, `/onboarding/role` | Reuses the sign-in split layout. |
@@ -75,7 +75,7 @@ All of these follow the design system (§2) and reuse §4 components.
 
 ### 1.5 Assumptions
 
-Next.js 15 App Router with React 19 · Tailwind **v4** (CSS-first `@theme`) and the current shadcn/ui · `lucide-react` icons (we do **not** load Material Symbols) · English only · desktop-first, responsive down to 360 px · light theme only in MVP · sign-in is required for every page except `(auth)`.
+Next.js 15 App Router with React 19 · Tailwind **v4** (CSS-first `@theme`) and the current shadcn/ui · `lucide-react` icons (we do **not** load Material Symbols) · English only · desktop-first, responsive down to 360 px · light theme only (no dark mode, D-47) · sign-in is required for every page except `(auth)`.
 
 ---
 
@@ -83,7 +83,7 @@ Next.js 15 App Router with React 19 · Tailwind **v4** (CSS-first `@theme`) and 
 
 ### 2.1 Source of truth
 
-Only `app/globals.css` holds token values. Components use **semantic Tailwind classes only** (`bg-card`, `text-muted-foreground`, `border-border`, `bg-success-subtle`). Raw hex values and `slate-*`/`emerald-*` palette classes are banned in `components/` and `app/` by an ESLint rule (`no-restricted-syntax` on className literals, with a CI grep as backup). That makes dark mode a token swap later.
+Only `app/globals.css` holds token values. Components use **semantic Tailwind classes only** (`bg-card`, `text-muted-foreground`, `border-border`, `bg-success-subtle`). Raw hex values and `slate-*`/`emerald-*` palette classes are banned in `components/` and `app/` by an ESLint rule (`no-restricted-syntax` on className literals, with a CI grep as backup). That keeps theming in one place.
 
 ### 2.2 Light tokens (Grounded Modern Utility, as rendered)
 
@@ -146,12 +146,12 @@ Install the primitives we need: `button, input, textarea, label, select, checkbo
 
 - **UI copy says "credits"** ("8 / 10 credits", "Costs 2 credits"). This matches all five designs, and in an AI product "tokens" is easily confused with LLM tokens.
 - **Code, DB, API, analytics and error codes say `token`** (`token_ledger`, `TokenBalancePill`, `INSUFFICIENT_TOKENS`).
-- All copy goes through `lib/copy.ts`: `export const CREDIT = { one: 'credit', other: 'credits', title: 'Credits' }` plus `formatCredits(n)`. If the user prefers "tokens", one constant changes.
+- All copy goes through `lib/copy.ts`: `export const CREDIT = { one: 'credit', other: 'credits', title: 'Credits' }` plus `formatCredits(n)`. The product owner confirmed "Credits" (D-37).
 - Error copy maps codes to words: `INSUFFICIENT_TOKENS` → "You don't have enough credits for this job."
 
-### 2.7 Dark theme (Later)
+### 2.7 Theme scope
 
-The Obsidian Kinetic Intelligence tokens go under `.dark { ... }` in the same file. `next-themes` with `attribute="class"`, defaulting to `light`, and no toggle in MVP. Note that Obsidian's accent is **indigo** (`#c0c1ff` / `#8083ff`), not slate. The Lead/user must confirm that the brand accent may change between themes. Because of the semantic-class lint rule (§2.1), no component code changes.
+**Light theme only** (Grounded Modern Utility), per the product owner (MASTER_PLAN D-47). There is no dark mode, no `next-themes` and no theme toggle, now or Later. The Obsidian Kinetic Intelligence file in `design/stitch/` is unused.
 
 ---
 
@@ -181,7 +181,7 @@ The Obsidian Kinetic Intelligence tokens go under `.dark { ... }` in the same fi
 | `/recruiter/jobs/[jobId]/edit` | recruiter | Edit job | post_a_job_screening_setup_mvp |
 | `/recruiter/jobs/[jobId]` | recruiter | Ranked applicants | **recruiter_pipeline_candidate_review_mvp** |
 | `/recruiter/jobs/[jobId]/applicants/[applicationId]` | recruiter | Applicant detail + resume viewer | no design – card styles from pipeline screen |
-| `/recruiter/company` | recruiter | Company, members, domains, verification state | no design – follow design system |
+| `/recruiter/company` | recruiter | Company profile, domains, verification state (single recruiter; no member management in MVP, D-44) | no design – follow design system |
 | `/admin/companies` | admin | Approval queue | no design – follow design system |
 | `/settings` | any signed-in | Account: email, password, sign out, delete account | no design – follow design system |
 
@@ -268,7 +268,7 @@ Role homes: applicant `/jobs`, recruiter `/recruiter/jobs`, admin `/admin/compan
 | `JobCard` | `job: JobListItem`, `fit?: FitSummary`, `connectionsCount?: number`, `applied?: {applicationId, status}`, `onCheckFit()` | `/jobs` RSC: open `jobs` + `companies` + F5 + `my_applications` | From the Stitch card: logo (initial monogram fallback), title, company · location · work mode, `TokenCostBadge`, `MatchScoreBadge` if fit exists, `Technical` chip. CTAs: **Check fit** (secondary) and **View & apply** (primary). Shows a `StatusChip` instead of Apply when the user has already applied. No comp range, no bookmark. |
 | `MatchScoreBadge` | `score: number|null`, `status?: evaluation_status`, `stale?: boolean`, `size?` | `fit_evaluations.confidence_score` | Bands come from the shared `lib/ranking/bands.ts` (applicant-ranking §2.6): **≥85 "Strong match"** (success), **70–84.99 "Good match"** (success-subtle, outline), **50–69.99 "Moderate match"** (warning), **<50 "Limited match"** (neutral). Never red. Props add `provisional?: boolean` (dashed outline + "Provisional"). The text always includes the number ("82 · Good match"), so colour is never the only signal. `pending` → spinner "Checking…". `stale` → dashed border + tooltip "Your profile changed. Re-check." Shared by applicant and recruiter. |
 | `CheckFitPanel` | `jobId`, `initial?: FitEvaluationDTO` | `POST /api/v1/jobs/{jobId}/fit-evaluations`, poll `GET /api/v1/fit-evaluations/{id}` (`useFitEvaluation`) | States in §6.2. Rendered in a `Sheet` from `JobCard` and inline on job detail. |
-| `ConnectionsCallout` | `connections: {firstName,lastName,position}[]`, `total`, `companyName`, `hasLinkedInImport` | `GET /api/v1/jobs/{jobId}/connections` (F4, D-22) or RSC count | "3 connections work at Stripe: Sarah L., Alex M. +1". Shows up to 3 names, with "Show all" opening a list. Without an import: "Upload your LinkedIn export to see connections" linking to `/profile`. **No Request Intro** (Later). Applicant-only. |
+| `ConnectionsCallout` | `connections: {firstName,lastName,position}[]`, `total`, `companyName`, `hasLinkedInImport` | `GET /api/v1/jobs/{jobId}/connections` (F4, D-22) or RSC count | "3 connections work at Stripe: Sarah L., Alex M. +1". Shows up to 3 names, with "Show all" opening a list. If the applicant later deleted their LinkedIn data from `/profile`: "Re-upload your LinkedIn export to check fit and see connections" linking to `/profile`. **No Request Intro** (Later). Applicant-only. |
 | `FileDropzone` | `accept: string[]`, `maxBytes`, `multiple`, `onFiles(files)`, `state: idle|uploading|processing|done|error`, `progress?`, `error?` | local | Accessible button + hidden input, plus drag-and-drop. Client checks of extension and size (server re-checks magic bytes). Mono filename. Replace / Remove actions. |
 | `LinkedInImportStatus` | `importId` | poll `GET /api/v1/linkedin-imports/{id}` | Checklist of the 5 files (present/missing), phase text, final counts ("1,428 connections across 342 companies · 37 positions · 24 skills · 3 education"). |
 | `ResumeCard` | `resume {fileName, sizeBytes, mimeType, parseStatus}` | `resumes` row + poll `GET /api/v1/resumes/{id}` while not terminal | Stitch onboarding card: file icon, name, size, Replace. |
@@ -393,13 +393,13 @@ Errors: an expired signed URL means re-init once, then show an error. A 413/415 
 3. `/onboarding/role` (only when `app_role` is still null): two large radio cards. Copy: "You can't change this later." Recruiter card: "Use your work email so we can verify your company." Server action `selectRole` → `refreshSession()` → redirect.
 4. **Applicant** `/onboarding/applicant` (Stitch screen):
    - Stepper: ✓ Account & role · **2 Upload data** · 3 Review & finish.
-   - **LinkedIn card**: `FileDropzone` accepting `.zip` or multiple `.csv`, ZIP ≤ 50 MB / CSV ≤ 20 MB each (linkedin-ingestion §2.3). Before upload, the client lists recognised files (ZIP entries are listed via `fflate` `unzip` with a filter, without reading full content) as a 5-item checklist: Profile, Positions, Skills, Education, Connections. Missing files are fine, with a warning "Without Connections.csv we can't show who you know at companies." Phases: *Uploading 45%* → *Parsing your export…* (indeterminate, polls `linkedin_imports.status`) → *Done* with counts. `failed` shows `error` plus "Try individual CSVs instead". Help text: "LinkedIn → Settings → Data privacy → Get a copy of your data. Pick the larger archive, or select Connections, Positions, Profile, Skills, Education." Privacy note: "We store your connections' names, companies and titles only, never their emails, and never show them to recruiters."
+   - **LinkedIn card**: `FileDropzone` accepting `.zip` or multiple `.csv`, ZIP ≤ 50 MB / CSV ≤ 20 MB each (linkedin-ingestion §2.3). Before upload, the client lists recognised files (ZIP entries are listed via `fflate` `unzip` with a filter, without reading full content) as a 5-item checklist: Profile, Positions, Skills, Education, Connections. Missing files are fine, with a warning "Without Connections.csv we can't show who you know at companies." Phases: *Uploading 45%* → *Parsing your export…* (indeterminate, polls `linkedin_imports.status`) → *Done* with counts. `failed` shows the coded message from linkedin-ingestion §4 plus **Retry upload** and "Try individual CSVs instead"; the previous successful import (if any) stays active. Uploads and parse status survive a reload, so the applicant can leave while LinkedIn prepares the export and come back. Help text: "LinkedIn → Settings → Data privacy → Get a copy of your data. Select Connections, Positions, Profile, Skills and Education. LinkedIn usually emails it within about 10 minutes; you can upload your resume meanwhile." Privacy note: "We store your connections' names, companies and titles only, never their emails, and never show them to recruiters."
    - **Resume card**: `FileDropzone` (PDF/DOCX, ≤ 5 MB) → `ResumeCard` with parse status *Extracting text…* → ✓. A failed parse blocks Continue ("We couldn't read this file. Try exporting it as PDF.").
    - **Preferences** (optional): target seniority, location preference → `applicant_profiles`.
    - **Credits card** (Stitch bottom banner, fixed copy): "10 free credits every month. Jobs cost 1–3 credits. Unused credits don't roll over."
-   - Footer: "Skip LinkedIn for now" (ghost, only if the LinkedIn import is missing) and **Continue** (enabled once the resume has `parse_status=succeeded`).
+   - Footer: **Continue**, enabled only once the LinkedIn import is `succeeded` **and** the resume has `parse_status=succeeded` (D-39). There is no skip. While disabled, a checklist under the button says which item is missing, uploading, parsing or failed (with Retry). A server `CONFLICT` (`linkedin_not_ready` / `resume_not_ready`) from Finish shows the same checklist.
    - `?step=review`: summary of the import counts, resume, preferences. **Finish** → server action `completeApplicantOnboarding` (sets `onboarded_at`) → `refreshSession()` → `/jobs` with a first-visit toast ("You have 10 credits this month").
-5. **Recruiter** `/onboarding/recruiter`: company name, website (optional), and a read-only email from auth. Inline domain check result: *"acme.com matches Acme Inc. (verified)"* → join as verified, or *"New company. We'll verify acme.com with an admin."* Free-mail domains → blocked with an explanation (list owned by company-verification). Submit → `onboarded_at` → verified: `/recruiter/jobs`, pending: `/recruiter/pending` ("We're verifying Acme Inc. This usually takes 1 business day. We'll email you.").
+5. **Recruiter** `/onboarding/recruiter`: company name, website (optional), and a read-only email from auth. Inline domain check result (`checkWorkEmailDomain`): *"New company. We'll send a link to confirm you@acme.com."*, or *"We'll verify acme.com with an admin."* (domain mismatch / name collision), or **blocked**: *"This company already has a recruiter account."* with a "Contact support" link; the form cannot be submitted and `startCompanyClaim` returns `CONFLICT company_has_recruiter` as a backstop (one recruiter per company, D-44). Free-mail domains → blocked with an explanation (list owned by company-verification). Submit → `onboarded_at` → verified: `/recruiter/jobs`, pending: `/recruiter/pending` ("We're verifying Acme Inc. This usually takes 1 business day. We'll email you.").
 
 ### 6.2 Check fit (free, async)
 
@@ -486,7 +486,7 @@ Entry: **Apply** on `/jobs/[jobId]` or in `CheckFitPanel`. Disabled with a reaso
 | **Semantic search** ("Go, Rust, Distributed Systems") | **Later** | Needs embeddings and a vector index. MVP: a plain keyword filter on title + company (`ilike`, debounced, in `?q=`) plus filters "Technical only" and "Max credits ≤ n". No "1st-degree connection" filter in MVP (it would need a connections join per job; Later). |
 | **Role switcher** (Candidate / Recruiter) | **Drop** | One account has one immutable role. Replaced by `RoleBadge`. |
 | **Notifications bell** | **Later** | Email (Resend) covers status changes in MVP. In-app notifications need a table and a read state. |
-| **Hiring Review Panel** (reviewers, approvals, consensus) | **Later** | Multi-reviewer workflow is not in the spec. Multiple recruiters already see the same list. |
+| **Hiring Review Panel** (reviewers, approvals, consensus) | **Later** | Multi-reviewer workflow is not in the spec, and MVP has one recruiter per company (D-44). |
 | **Rubric weight editor** ("Edit Requisition Weights", Evaluation Priority sliders) | **Drop** | Conflicts with the locked 70/30 weights and the fixed 4 categories. Replaced by the read-only `RankBreakdown` caption. |
 | **Credit Intake Gate radio** (pipeline sidebar) | **MVP, relocated** | Token cost is set per job at posting (`TokenCostSelector`, 1–3, in `JobForm`). The pipeline header shows it read-only. No sidebar control, and no change after the first application (F9). |
 | **Metric cards** | **MVP (reduced)** | Applicant: Available credits (+ "resets in N days"), Active applications. Recruiter: Applicants / New / Shortlisted / Repo reviews done. **Dropped:** "Matched jobs ≥85%", "+4 new today", "99.8% purity", "Zero spam", "31.5% ratio". These are either not computable or vanity numbers. |
@@ -564,7 +564,7 @@ Playwright runs every E2E flow at **1280×800** and **390×844**.
 - OAuth sign-in with an email that already has a password account: Supabase links or errors. We show the Supabase message on `/sign-in` with "Sign in with email instead".
 - Recruiter's membership is revoked while on a page: the next RSC request gets an RLS-empty result or a guard `FORBIDDEN` → redirect to `/recruiter/pending`.
 - Signed resume URL expires before the download starts (slow network): Retry requests a fresh URL.
-- Applicant deletes their LinkedIn data from `/profile`: ConnectionsCallout falls back to the upload prompt, and existing fits go stale.
+- Applicant deletes their LinkedIn data from `/profile` (allowed, privacy right): a banner on `/jobs` asks them to re-upload; Check fit and Apply return `CONFLICT {reason:'linkedin_required'}` until they do (D-39), and existing fits go stale.
 - JS disabled or hydration failure: RSC pages still render. Apply needs JS (a dialog), so a `<noscript>` notice is shown.
 
 ---
@@ -581,11 +581,11 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 |---|---|
 | F1 claims | `app_role`, `onboarded`, `membership_status` (D-24). §1.1 has been updated. |
 | F2 location and work mode | **MVP.** `jobs.location` and `jobs.work_mode` (D-21). Compensation is Later. |
-| F3 / F17 onboarding | **F3 stands (D-08).** Resume required, LinkedIn skippable. `mark_onboarded()` has been changed to match. |
+| F3 / F17 onboarding | **LinkedIn import and resume both required (product owner, D-39)**, reversing D-08. §1.1 and §6.1 have been updated: no skip, explicit error and retry states. |
 | F4 connections | **Separate parallel call (D-22).** §1.1, §4.1 and §6.2 have been updated. |
 | F5 latest fit per job | **`my_latest_fits(p_job_ids)`** (D-23). The app computes staleness. |
 | F6 direct uploads | **Accepted.** The endpoint names are Backend's (D-27). §5.7 has been updated. |
-| F7 terminology | **"Credits" in the UI by default (D-35)**, confirmation pending with the product owner. |
+| F7 terminology | **"Credits" in every UI label, message and email (product owner, D-37).** Code, DB and API stay `token`. |
 | F8–F10, F12–F14 | Resolved as marked. Withdraw is MVP (D-19). |
 | F11 pending recruiters | **Drafts allowed (D-09).** §1.1 and §3.3 have been updated. |
 | F15 admin queue | **MVP**, built in Phase 2 as a minimal table (MASTER_PLAN §11). |
@@ -593,5 +593,5 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 | Sign-up role and password | Backend's B2 mechanism (D-25). Minimum password length is 10. §6.1 has been updated. |
 | Job field limits, CSV size | The shared zod schemas are the single source (D-31). §6.1 and §6.4 have been updated. |
 | Failed review copy | "Review unavailable: listed under Incomplete" (D-06). §4.2 and §6.7 have been updated. |
-| Dark theme accent change | **Later**. Logged as a product-owner question. |
+| Theme | **Light only** (product owner, D-47). §2.7 has been updated. The Obsidian design file is unused. |
 | Repo ownership | `ApplyDialog` step 1 adds a required checkbox: "This repository is my own work, or I am a major contributor" (`repoOwnershipAttested`, D-16). `RepoScoreCard` shows `repoFullName` with "Ownership not verified". |

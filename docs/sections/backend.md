@@ -77,7 +77,7 @@
 Route paths are owned by Frontend (frontend.md). This table defines behaviour only.
 
 **`onboarded_at` set when:**
-- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'`. The LinkedIn export is part of the onboarding screen but can be skipped (MASTER_PLAN D-08); an upload that is still parsing does not block Finish. The action calls Data's `mark_onboarded()`, which re-checks these prerequisites in SQL.
+- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'` **and** the active LinkedIn import has `status = 'succeeded'` (at least one recognised file; Connections optional). Both are required (product owner, MASTER_PLAN D-39). The action calls Data's `mark_onboarded()`, which re-checks both in SQL. The action calls Data's `mark_onboarded()`, which re-checks these prerequisites in SQL.
 - **Recruiter:** `completeRecruiterOnboarding()` succeeds when the recruiter has a `pending` or `verified` membership. Verification is **not** required to finish onboarding, so unverified recruiters can draft jobs (company-verification.md §2.4).
 
 **Guards** (`lib/auth/`, canonical names): `getSession()`, `requireUser()`, `requireRole(role)`, `requireOnboarded()`, `requireCompanyMember(companyId, {verified: true})`, plus **`requireAdmin()`** (role `admin` + `aal2`). Each throws an `AppError`, which route handlers and the server-action wrapper convert to the standard error shape.
@@ -87,7 +87,7 @@ Route paths are owned by Frontend (frontend.md). This table defines behaviour on
 2. Inngest `delete-account` removes Storage objects (`resumes/{uid}/`, `linkedin-exports/{uid}/`).
 3. It calls `auth.admin.deleteUser(uid)`, which cascades through `profiles` (Data's FK rules).
 4. It sends the confirmation email to the captured address.
-5. Recruiters who are the last company admin must hand over first (`CONFLICT last_company_admin`).
+5. For recruiters, the company's open jobs are closed first. With one recruiter per company (D-44) there is no hand-over step.
 
 ### 2.2 Request pipeline and error handling
 ```
@@ -131,7 +131,7 @@ Client: `inngest/client.ts` (`id: 'nexuspulse'`, typed event schemas via `EventS
 | `notify-application-status` | `application/status.changed` `{applicationId, from, to}` | `step.sleep('10m')` → re-read status, skip if changed → send `email/send.requested` | 3 | key applicationId limit 1 (`cancelOn` a newer `status.changed` for the same id) | — |
 | `send-email` | `email/send.requested` `{template, to, props, idempotencyKey}` | render React Email → Resend `send` with the `Idempotency-Key` header | 5 | global 10/s throttle (Resend limit) | 15 s |
 | `refund-archived-job-applications` | `job/archived` `{jobId}` | list `submitted` applications → `refund_application(id,'job_archived')` each → email applicants | 5 | key jobId limit 1 | — |
-| `on-company-events` | `company/claim.needs_review`, `company/verified`, `company/rejected`, `membership/joined`, `membership/join.requested`, `membership/decided` | resolve recipients → `email/send.requested` | 3 | — | — |
+| `on-company-events` | `company/claim.needs_review`, `company/verified`, `company/rejected`, `membership/decided` | resolve recipients → `email/send.requested` | 3 | — | — |
 | `delete-account` | `account/deletion.requested` `{userId, email}` | storage cleanup (list + remove in batches of 100) → `auth.admin.deleteUser` → confirmation email | 5 | key userId limit 1 | 120 s |
 | `sweep-stuck-work` | **cron** `*/5 * * * *` | re-emit `fit/evaluation.requested` for `pending` fits older than 2 min and `running` older than 10 min; same for `repo_evaluations` (> 10 / > 20 min) and `parse_status = pending` resumes/imports with an uploaded object (> 10 min); `application/submitted` for applications with null `fit_evaluation_id` (> 10 min); `job/archived` for archived jobs with un-refunded `submitted` applications. Each re-emit uses the Inngest event `id` = `{row id}:{attempt bucket}` for dedupe. Rows with `attempts ≥ 5` → `failed` | 1 | singleton | 60 s |
 | `purge-expired-data` | **cron** `17 3 * * *` (daily) | delete `resumes` rows + objects for uploads never completed (> 24 h); expire stale company claims (> 7 days unconfirmed); delete consumed/expired `work_email_verifications` > 30 days | 2 | singleton | 300 s |
@@ -195,7 +195,6 @@ It returns one signed URL per file under `linkedin-exports/{uid}/{importId}/{fil
 | `uploads.init` | user | resumes 10 / h; LinkedIn imports 10 / day (linkedin-ingestion.md) | open |
 | `verification.email` | user | 3 / h, 10 / day | open |
 | `verification.confirm` | user | 10 / h | open |
-| `companies.search` | user | 30 / min | open |
 | `recruiter.read` (applicant list/detail, resume URL) | user | 120 / min | open |
 | default for other `/api/v1` | user or IP | 300 / min | open |
 
@@ -254,13 +253,11 @@ All emails are rendered with React Email (`emails/*.tsx`) and sent through the `
 | Template | Recipient | Trigger | Notes |
 |---|---|---|---|
 | Confirm sign-up / magic link / reset password / email change | user | Supabase Auth | Supabase templates |
-| `work-email-verification` | recruiter's work email | `startCompanyClaim`, `requestCompanyJoin`, resend | Link to `/verify/work-email?token=…`, expires in 30 min |
+| `work-email-verification` | recruiter's work email | `startCompanyClaim`, resend | Link to `/verify/work-email?token=…`, expires in 30 min |
 | `company-claim-needs-review` | platform admins | `company/claim.needs_review`, Flow C/D | Link to `/admin/companies` |
 | `company-verified` / `company-rejected` | claimant + members | admin decision or auto-verify | Reason included on reject |
-| `membership-joined` | company admins | `membership/joined` (auto-join) | "Not a colleague? Remove" link |
-| `membership-request` | company admins | `membership/join.requested` | Approve link |
 | `membership-decided` | requester | approve / reject | |
-| `application-received` | applicant | `application/submitted` | Job title, tokens spent, balance. No scores |
+| `application-received` | applicant | `application/submitted` | Job title, credits spent, credit balance (UI copy says Credits, D-37). No scores |
 | `application-shortlisted` / `application-rejected` | applicant | `notify-application-status` (10 min delay, cancelled by a newer change) | Neutral, kind tone. Never includes scores or ratings. `→ shortlisted` (also a reconsidered rejection) sends shortlisted; `→ rejected` sends rejected; `shortlisted → submitted` sends nothing |
 | `application-refunded` | applicant | `refund-archived-job-applications` | Amount + new balance |
 | `recruiter-daily-digest` | recruiter | weekday cron | Count of new applicants per job. Unsubscribe link (`profiles.email_digest_opt_out`) |
@@ -302,7 +299,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | SA | `signOut` | — | user | → `{}` | — |
 | SA | `requestPasswordReset` / `updatePassword` | — | anon / user | `{email}` / `{password}` → `{}` | RATE_LIMITED, VALIDATION_FAILED |
 | SA | `setRole` | — | user (role null) | `{role}` → `{redirectTo}` (refreshes session) | CONFLICT (`role_already_set`), VALIDATION_FAILED |
-| SA | `deleteAccount` | — | user, signed in < 5 min ago | `{confirm: 'DELETE'}` → `{}` (signs out) | FORBIDDEN (`reauth_required`), CONFLICT (`last_company_admin`) |
+| SA | `deleteAccount` | — | user, signed in < 5 min ago | `{confirm: 'DELETE'}` → `{}` (signs out) | FORBIDDEN (`reauth_required`) |
 | SA | `exportMyData` | — | user | `{}` → `{url, expiresAt}`: calls Data's `export_my_data()` and returns the JSON as a 5-min signed download (rate limit 3/day) | RATE_LIMITED |
 | RA | GET | `/api/v1/me` | user | → `{id, email (from the auth session, since `profiles.email` is not column-granted), fullName, avatarUrl, role, onboarded, company?: {id, name, verificationStatus, membershipStatus, isCompanyAdmin}}` | 401 |
 | RA | GET | `/api/health` | anon | → `{ok, db, version}` | 503 |
@@ -320,7 +317,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | GET | `/api/v1/linkedin-imports/active` | applicant | → active import summary (same shape as GET by id) | 404 |
 | RA | DELETE | `/api/v1/linkedin-imports/active?scope=all\|connections` | applicant | → `204` (`all`: every import + raw files; `connections`: connections rows only). Logs `linkedin.import_deleted` | 422 |
 | SA | `saveApplicantPreferences` | — | applicant | `{headline?, targetSeniority?, locationPref?}` → profile | VALIDATION_FAILED |
-| SA | `completeApplicantOnboarding` | — | applicant | `{}` → `{redirectTo:'/jobs'}` (calls Data's `mark_onboarded()`, then refreshes the session) | CONFLICT (`resume_not_ready`) |
+| SA | `completeApplicantOnboarding` | — | applicant | `{}` → `{redirectTo:'/jobs'}` (calls Data's `mark_onboarded()`, then refreshes the session) | CONFLICT (`resume_not_ready`, `linkedin_not_ready`) |
 
 ### 4.3 Jobs (applicant side), fit, connections, tokens, applications
 | Kind | Method / name | Path | Auth | Request → Response | Errors |
@@ -333,7 +330,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | POST | `/api/v1/repos/validate` | applicant | `{url}` → `{canonicalUrl, fullName, defaultBranch, sizeKb, language}` | 422 `REPO_NOT_ACCESSIBLE`, 429 |
 | RA | GET | `/api/v1/tokens/balance` | applicant | → `{period, granted, spent, refunded, adjusted, total, balance, resetsAt}` | 401, 403 |
 | RA | GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | token-system §4 | 422 |
-| RA | POST | `/api/v1/applications` | applicant onb, **`Idempotency-Key` required** | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation required for technical jobs, D-16) → `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 402 `INSUFFICIENT_TOKENS`, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 422 `VALIDATION_FAILED`/`REPO_NOT_ACCESSIBLE`, 429 |
+| RA | POST | `/api/v1/applications` | applicant onb, **`Idempotency-Key` required** | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation required for technical jobs, D-16) → `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 402 `INSUFFICIENT_TOKENS`, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT` (`token_cost_changed`, `linkedin_required`), 422 `VALIDATION_FAILED`/`REPO_NOT_ACCESSIBLE`, 429 |
 | RA | GET | `/api/v1/applications?limit&cursor&status` | applicant | from `my_applications` → `{data:[{id, job:{id,title,company,status}, status, tokenCost, submittedAt, updatedAt, repoReviewStatus?, refunded}], nextCursor}` | 401, 403 |
 | RA | GET | `/api/v1/applications/{id}` | applicant (owner) | from `my_applications` + events → `{…, events:[{toStatus, at}]}`. **Never scores or ratings.** | 404 |
 | SA | `withdrawApplication` | — | applicant (owner) | `{applicationId}` → application (no refund; calls `withdraw_application` RPC) | CONFLICT (`not_withdrawable` unless `submitted`/`shortlisted`) |
@@ -341,8 +338,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 ### 4.4 Recruiter: company, jobs, pipeline
 | Kind | Method / name | Path | Auth | Request → Response | Errors |
 |---|---|---|---|---|---|
-| RA | GET | `/api/v1/companies?query` | recruiter | company-verification §4 | |
-| SA | `checkWorkEmailDomain`, `startCompanyClaim`, `requestCompanyJoin`, `resendWorkEmailVerification`, `confirmWorkEmail`, `cancelPendingMembership`, `updateCompanyProfile`, `approveMember`, `removeMember`, `setCompanyAdmin` | — | recruiter / cadmin | company-verification §4 | |
+| SA | `checkWorkEmailDomain`, `startCompanyClaim` (`CONFLICT company_has_recruiter` when the company or domain already has a recruiter, D-44), `resendWorkEmailVerification`, `confirmWorkEmail`, `cancelPendingMembership`, `updateCompanyProfile` | — | recruiter | company-verification §4 | |
 | RA | POST | `/api/v1/companies/{companyId}/logo/uploads` | cadmin or pending creator | `{name, size, mimeType}` → signed upload | 403, 422 |
 | SA | `completeRecruiterOnboarding` | — | recruiter | → `{redirectTo:'/recruiter/jobs' (verified) or '/recruiter/pending'}` | CONFLICT (`no_membership`) |
 | SA | `createJob` | — | recruiter with an active membership (pending ok) | `{title, description, requirements, tokenCost 1–3, isTechnical}` → job (`draft`) | VALIDATION_FAILED (title 5–120, description 50–20,000, requirements 0–10,000 chars) |
@@ -425,7 +421,7 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 | B5 no AV scan in MVP | **Accepted (D-13).** Attachment-only downloads, a text-first viewer, and ClamAV Later. |
 | B6 10-minute delayed status emails, B7 50 MB ZIP | **Accepted.** |
 | B8 zipball | **Accepted (D-04).** |
-| Onboarding gate | **Resume only (D-08).** §2.1 and §4.2 have been updated, and `linkedin_not_ready` is removed. |
+| Onboarding gate | **Resume and LinkedIn import both required (product owner, D-39; reverses D-08).** §2.1 and §4.2 have been updated. If the applicant later deletes their LinkedIn data, Check fit and Apply return `409 CONFLICT {reason:'linkedin_required'}` until they re-upload. |
 | Account deletion and export | **Server actions `deleteAccount` (re-auth < 5 min) and `exportMyData` (3/day) (D-28).** There is no `/api/v1/me` DELETE or export route. data.md §7.5 and §8 have been updated. |
 | Admin pages | **User-scoped client + `is_admin()` RLS (D-18).** The ESLint service-role allowlist is `inngest/**`, `scripts/support/**` and `lib/supabase/admin.ts`. |
 | Applicant detail route | **Renamed to `GET /api/v1/jobs/{jobId}/applicants/{applicationId}` (D-26).** |

@@ -9,18 +9,21 @@ This is the original product spec the planning agents worked from. Bracketed cho
 | Stack | Next.js (App Router, TypeScript, Tailwind) + Supabase (Postgres, Auth, Storage, RLS) | User |
 | Hosting | Vercel (app) + Supabase (managed Postgres/Storage) | User |
 | AI provider | OpenRouter (model per task chosen in the AI Evaluation sub-plan) | User |
-| Tokens | 10 per applicant per calendar month, **no rollover** | User |
+| Tokens | 10 per applicant per **UTC** calendar month, **no rollover** | User; UTC month confirmed by the product owner |
+| UI terminology | The UI says **"Credits"**; code and database names stay `token` | Product owner |
 | Job token cost | **Set by recruiter, 1–3** | User |
 | GitHub review categories | Security, Organization, Performance, **Testing** | User |
 | GitHub ratings visibility | **Hidden from applicant**; recruiters only | User |
 | Ranking weights | **70% confidence / 30% GitHub** on technical jobs; confidence only on non-technical | User |
 | Auth methods | Email/password + Google + LinkedIn (OIDC) | Default |
 | LinkedIn upload | Full ZIP export **or** individual CSVs (Profile, Positions, Skills, Education, Connections) | Default |
+| LinkedIn at onboarding | **Required**: a successful LinkedIn import plus a parsed resume before onboarding completes | Product owner |
 | Resume | PDF or DOCX, max 5 MB | Default |
 | GitHub repo | Public repos only; static review, never executed | Default |
 | Company verification | Agents propose (default: work-email domain + admin approval fallback) | Default |
-| Recruiters per company | Multiple | Default |
+| Recruiters per company | **One (MVP)**. Multiple recruiters, with approval from the existing member, is Later | Product owner (replaces the earlier default "Multiple") |
 | Recruiter actions | MVP: shortlist / reject. Messaging is a later feature | Default |
+| Theme | **Light theme only** (Grounded Modern Utility). No dark mode | Product owner |
 
 ## Original spec
 
@@ -55,4 +58,4 @@ This is the original product spec the planning agents worked from. Bracketed cho
 - Sub-plans (each with owner agent, reviewers, data model changes, API endpoints, edge cases, testing approach): AI Evaluation, Applicant Ranking, and optionally LinkedIn Data Ingestion, Token System, Company Verification.
 
 ## Design input
-The Stitch export in [`design/stitch/`](../design/stitch/) ("NexusPulse" branding). Five MVP screens: sign-in, candidate onboarding, job marketplace, post-a-job, recruiter pipeline. Two design systems: Grounded Modern Utility (light, primary) and Obsidian Kinetic Intelligence (dark). See [`nexuspulse_mvp_design_system_export_specs.md`](../design/stitch/nexuspulse_mvp_design_system_export_specs.md).
+The Stitch export in [`design/stitch/`](../design/stitch/) ("NexusPulse" branding). Five MVP screens: sign-in, candidate onboarding, job marketplace, post-a-job, recruiter pipeline. Two design systems: Grounded Modern Utility (light, primary) and Obsidian Kinetic Intelligence (dark; **unused**, since the product is light-theme only per the locked decisions). See [`nexuspulse_mvp_design_system_export_specs.md`](../design/stitch/nexuspulse_mvp_design_system_export_specs.md).

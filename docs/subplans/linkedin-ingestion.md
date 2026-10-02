@@ -17,7 +17,7 @@
 | L2 | Re-upload of a single CSV: replace everything or merge per file? | **Replace all** (the task's rule). The new import becomes the whole dataset; datasets not in the new upload are removed. The UI warns before upload: "Your new upload doesn't include Positions.csv. Your current positions will be removed." | Frontend (warning copy) |
 | L3 | If one file in a multi-file upload fails to parse, do we keep the others? | **No. The import is atomic.** Any fatal file error fails the whole import and the previous active import stays untouched. Non-fatal issues are warnings. | Backend |
 | L4 | Fuzzy and prefix matches: show them? | **Show them in a separate, collapsed "Possible matches" group**, labelled as possible. Exact matches show as "Works at {Company}". | Frontend |
-| L5 | Is Connections.csv required at onboarding? | **No.** Onboarding needs a parsed resume. The LinkedIn export is offered on the same step but can be skipped and added later from `/profile` (MASTER_PLAN D-08). Connections are optional (the consent copy explains why we ask). | Frontend, Backend |
+| L5 | Is Connections.csv required at onboarding? | **No.** Onboarding requires a **succeeded import with at least one recognised file** plus a parsed resume (product owner, MASTER_PLAN D-39). Within the import, Connections.csv (and any other single file) is optional; the consent copy explains why we ask. | Frontend, Backend |
 | L6 | Is a 50 MB upload cap enough? LinkedIn's "larger data archive" (messages, media) can exceed it. | **Yes, with guidance:** the upload screen tells users to request the **specific data** export (Connections, Positions, Profile, Skills, Education), which is small and arrives in ~10 minutes, or to upload the five CSVs individually. | Frontend (help copy) |
 
 ### 1.2 Risks
@@ -514,7 +514,7 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 |---|---|
 | L1 localized headers | **Accepted.** The Lead recruits three or more testers with non-English exports in Phase 0 (MASTER_PLAN §11), and their exports become fixtures before Phase 1 exits. |
 | L2 replace-all, L3 atomic import, L4 possible matches shown separately, L6 50 MB cap with guidance | **Accepted.** |
-| L5 onboarding gate | **Changed by D-08.** Only a parsed resume is required to finish onboarding. The LinkedIn export is on the same step but can be skipped, and the UI keeps nudging (`ConnectionsCallout`, `/profile`). |
+| L5 onboarding gate | **LinkedIn import required (product owner, D-39).** Onboarding needs a succeeded import (≥ 1 recognised file) and a parsed resume. Partial exports remain valid. If the applicant later deletes their data, Check fit and Apply return `CONFLICT linkedin_required` until a new import succeeds. |
 | Backend 1–2: init-only imports blocking activation | **Fixed (D-14).** New column `linkedin_imports.uploaded_at`, set by `complete`. The supersede check counts newer imports only when they are `running` or `succeeded`, or `pending` with `uploaded_at` set. The sweeper uses `uploaded_at` to tell a completed upload from an init-only one. §2.7, §3, §4 and §5 have been updated. |
 | Backend 3: service-role inserts | **Confirmed.** No trigger on `connections` reads `auth.uid()`. The generated `company_name_normalized` cost at 35k rows is acceptable. Re-measure in Phase 1. |
 | Backend 4: delete during parse | **Fixed (D-14).** `DELETE …/active` sends `linkedin/import.deleted`, which is in `cancelOn`. `activate_linkedin_import` returns quietly when the row is gone. |

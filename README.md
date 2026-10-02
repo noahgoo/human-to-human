@@ -1,6 +1,8 @@
 # NexusPulse: AI Job-Matching Portal (planning repo)
 
-NexusPulse is a two-sided job portal. **Applicants** upload their LinkedIn data export and a resume. They can check their fit for any job for free, which gives a 0–100 score with an explanation and lists their LinkedIn connections at the company. Each month they get **10 credits** to spend on applications, and each job costs 1–3. **Technical jobs** also ask for a public GitHub repo, which AI reviews statically on Security, Organization, Performance and Testing. Only recruiters see those ratings. **Recruiters** verify their company, post jobs, and review applicants ranked 70% fit / 30% GitHub (fit only for non-technical jobs). In the MVP they can shortlist or reject.
+> **"NexusPulse" is a placeholder name** taken from the Stitch designs. The final brand has not been chosen (product owner, D-45).
+
+NexusPulse is a two-sided job portal. **Applicants** upload their LinkedIn data export and a resume. They can check their fit for any job for free, which gives a 0–100 score with an explanation and lists their LinkedIn connections at the company. Each month they get **10 credits** (UTC calendar month; called `token` in code) to spend on applications, and each job costs 1–3. **Technical jobs** also ask for a public GitHub repo, which AI reviews statically on Security, Organization, Performance and Testing. Only recruiters see those ratings. **Recruiters** verify their company, post jobs, and review applicants ranked 70% fit / 30% GitHub (fit only for non-technical jobs). In the MVP they can shortlist or reject.
 
 > **Status:** planning only. This repo has no application code yet. The plan is final as of pass 2; see [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md).
 
@@ -23,7 +25,7 @@ The reasoning for each choice is in [MASTER_PLAN §2](docs/MASTER_PLAN.md#2-stac
 | Doc | What it covers | Owner |
 |---|---|---|
 | [`docs/SPEC.md`](docs/SPEC.md) | Original spec and **locked decisions** (these win over everything) | User |
-| [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) | Architecture, data model summary, API table, pages, MVP vs Later, phases, risks, decision log, product-owner questions | Lead |
+| [`docs/MASTER_PLAN.md`](docs/MASTER_PLAN.md) | Architecture, data model summary, API table, pages, MVP vs Later, phases, risks, decision log, product-owner decisions | Lead |
 | [`docs/sections/frontend.md`](docs/sections/frontend.md) | Routes, components, design tokens, client state, accessibility, E2E | Frontend |
 | [`docs/sections/backend.md`](docs/sections/backend.md) | Auth, route handlers, server actions, Inngest jobs, integrations, rate limits, email | Backend |
 | [`docs/sections/data.md`](docs/sections/data.md) | Full DDL, RLS, views and RPCs, Storage, privacy and retention, pgTAP, seed | Data |
@@ -32,7 +34,7 @@ The reasoning for each choice is in [MASTER_PLAN §2](docs/MASTER_PLAN.md#2-stac
 | [`docs/subplans/linkedin-ingestion.md`](docs/subplans/linkedin-ingestion.md) | LinkedIn export parsing, normalization, connection matching | Data |
 | [`docs/subplans/token-system.md`](docs/subplans/token-system.md) | Credits ledger, balance, atomic Apply, refunds | Backend |
 | [`docs/subplans/company-verification.md`](docs/subplans/company-verification.md) | Work-email domain verification, admin queue, memberships | Backend |
-| [`design/stitch/`](design/stitch/) | Stitch export: 5 MVP screens ([sign-in](design/stitch/sign_in_authentication_mvp/), [candidate onboarding](design/stitch/candidate_onboarding_mvp/), [job marketplace](design/stitch/job_marketplace_dashboard_mvp/), [post a job](design/stitch/post_a_job_screening_setup_mvp/), [recruiter pipeline](design/stitch/recruiter_pipeline_candidate_review_mvp/)) and 2 design systems ([Grounded Modern Utility](design/stitch/grounded_modern_utility/DESIGN.md), light, primary; [Obsidian Kinetic Intelligence](design/stitch/obsidian_kinetic_intelligence/DESIGN.md), dark, Later) | Design |
+| [`design/stitch/`](design/stitch/) | Stitch export: 5 MVP screens ([sign-in](design/stitch/sign_in_authentication_mvp/), [candidate onboarding](design/stitch/candidate_onboarding_mvp/), [job marketplace](design/stitch/job_marketplace_dashboard_mvp/), [post a job](design/stitch/post_a_job_screening_setup_mvp/), [recruiter pipeline](design/stitch/recruiter_pipeline_candidate_review_mvp/)) and 2 design systems ([Grounded Modern Utility](design/stitch/grounded_modern_utility/DESIGN.md), light, primary; [Obsidian Kinetic Intelligence](design/stitch/obsidian_kinetic_intelligence/DESIGN.md), **unused**: the product is light-theme only) | Design |
 | [`design/stitch/nexuspulse_mvp_design_system_export_specs.md`](design/stitch/nexuspulse_mvp_design_system_export_specs.md) | Design overview and screen specs | Design |
 
 ## Agent team and ownership
@@ -49,14 +51,14 @@ Data writes every migration and RLS policy. A sub-plan's owner specifies the con
 ## MVP scope (brief)
 
 - Sign-in with email/password, Google or LinkedIn (name, email and picture only). The role is chosen once.
-- Applicant onboarding: resume required (PDF/DOCX, up to 5 MB). LinkedIn export as a ZIP or CSVs, which can be skipped.
+- Applicant onboarding: **both required**: a LinkedIn export (ZIP or CSVs) that imports successfully, and a parsed resume (PDF/DOCX, up to 5 MB).
 - Job marketplace. Free **Check fit** with connections at the company. **Apply** for 1–3 credits (10/month, no rollover, atomic and idempotent). Application status and withdraw.
 - Technical jobs: AI static review of a public GitHub repo, which applicants never see.
-- Recruiters: company verification by work email, with an admin fallback. Job posting (cost 1–3, technical flag). A ranked applicant list with a fairness notice. Shortlist and reject, a resume viewer, and the applicant's email revealed after shortlisting.
+- Recruiters: **one recruiter per company** in MVP, with company verification by work email and an admin fallback. Job posting (cost 1–3, technical flag). A ranked applicant list with a fairness notice. Shortlist and reject, a resume viewer, and the applicant's email revealed after shortlisting.
 - Privacy: connections are visible only to the applicant who uploaded them, raw uploads are deleted after parsing, and users can export or delete their data.
-- **Later:** messaging and intros, semantic search, compensation, dark theme, OCR and AV scanning, verified repo ownership. See [MASTER_PLAN §10](docs/MASTER_PLAN.md#10-mvp-vs-later).
+- **Later:** messaging and intros, semantic search, compensation, OCR and AV scanning, verified repo ownership via GitHub account linking, multiple recruiters per company. The product is light-theme only. See [MASTER_PLAN §10](docs/MASTER_PLAN.md#10-mvp-vs-later).
 
-Open product questions are in [MASTER_PLAN §15](docs/MASTER_PLAN.md#15-questions-for-the-product-owner).
+Product-owner decisions are in [MASTER_PLAN §15](docs/MASTER_PLAN.md#15-product-owner-decisions).
 
 ## Getting started (planned)
 

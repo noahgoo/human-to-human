@@ -54,7 +54,7 @@ balance(applicant, P) = Σ amount  WHERE applicant_id = applicant AND period = P
 
 **Period** is `token_period(ts timestamptz) = to_char(ts AT TIME ZONE 'UTC', 'YYYY-MM')`, which is `IMMUTABLE`. `current_token_period()` returns `token_period(now())`. `now()` is the transaction start time, so a single transaction always sees one period, even when it straddles midnight UTC.
 
-**Reset time** shown in the UI is `date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month'`, returned as `timestamptz`. The Frontend renders it in local time with the copy "Resets on {date} · unused tokens don't roll over".
+**Reset time** shown in the UI is `date_trunc('month', now() AT TIME ZONE 'UTC') + interval '1 month'`, returned as `timestamptz`. The Frontend renders it in local time with the copy "Resets on {date} · unused credits don't roll over" (UI says **Credits**, D-37).
 
 ### 2.2 Lazy vs. cron grant: decision
 | Option | Pros | Cons |
@@ -275,7 +275,7 @@ admin_adjust_tokens(p_applicant_id uuid, p_amount int, p_reason text) returns js
 |---|---|---|---|---|---|
 | GET | `/api/v1/tokens/balance` | applicant | — | `200 {period, granted, spent, refunded, adjusted, total, balance, resetsAt}` (`total = granted + refunded + adjusted`, D-11) | 401, 403 |
 | GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | — | `200 {data:[{id, kind, amount, period, applicationId, jobTitle, reason, createdAt}], nextCursor}` (newest first, all periods) | 401, 403, 422 |
-| POST | `/api/v1/applications` | applicant, onboarded; header `Idempotency-Key` (uuid, **required**) | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation `true` required for technical jobs, D-16) | `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 402, 422 `VALIDATION_FAILED` (incl. missing/invalid key: `details.fields.idempotencyKey`)/`REPO_NOT_ACCESSIBLE`, 429 |
+| POST | `/api/v1/applications` | applicant, onboarded; header `Idempotency-Key` (uuid, **required**) | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation `true` required for technical jobs, D-16) | `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT` (`token_cost_changed`, or `linkedin_required` from the handler when the applicant deleted their LinkedIn data, D-39), 402, 422 `VALIDATION_FAILED` (incl. missing/invalid key: `details.fields.idempotencyKey`)/`REPO_NOT_ACCESSIBLE`, 429 |
 | server action | `archiveJob(jobId)` | verified company member | `{jobId}` | `ActionResult<{refundsQueued: n}>` | FORBIDDEN, NOT_FOUND, CONFLICT |
 | server action | `updateJob(...)` with a changed `tokenCost` | verified company member | — | — | `CONFLICT {reason:'pricing_locked'}` |
 | server action | `adminAdjustTokens(applicantId, amount, reason)` | admin (aal2) | — | `ActionResult<{balance}>` | FORBIDDEN, VALIDATION_FAILED |
@@ -283,7 +283,7 @@ admin_adjust_tokens(p_applicant_id uuid, p_amount int, p_reason text) returns js
 Rate limit on `POST /api/v1/applications`: 10/min per user (backend.md §2.6).
 
 **Frontend contract (balance UI):**
-- The navbar pill reads `balance` / `total`, e.g. "8 / 10 credits" (UI says "credits", D-35). `total = granted + refunded + adjusted` is returned by `GET /api/v1/tokens/balance`, so it can exceed 10 after a refund (D-11).
+- The navbar pill reads `balance` / `total`, e.g. "8 / 10 credits" (UI says "Credits", D-37). `total = granted + refunded + adjusted` is returned by `GET /api/v1/tokens/balance`, so it can exceed 10 after a refund (D-11).
 - The Apply dialog shows the cost, the current balance and the balance after applying. It disables Confirm when `balance < cost` and shows the reset date.
 - The dialog generates the `Idempotency-Key` once **when it opens** and reuses it on retry. A new key is generated when the dialog closes **or when the request body changes** (e.g. the GitHub URL is corrected after `REPO_NOT_ACCESSIBLE`), per MASTER_PLAN D-10.
 - The dialog sends `expectedTokenCost` with the cost it displayed. On `CONFLICT token_cost_changed`, it re-renders with the new cost and asks for confirmation again.
@@ -339,7 +339,7 @@ Rate limit on `POST /api/v1/applications`: 10/min per user (backend.md §2.6).
 
 **Route handler tests (Vitest):** a missing or invalid `Idempotency-Key` → 422 `VALIDATION_FAILED` with `details.fields.idempotencyKey` (MASTER_PLAN D-10). HINT → HTTP mapping. The Inngest send is called only when `replayed=false`, and a send failure still returns 201.
 
-**E2E (Playwright, Frontend owns):** apply decrements the navbar balance, a double-click creates a single application, the insufficient-tokens state renders the reset date.
+**E2E (Playwright, Frontend owns):** apply decrements the navbar balance, a double-click creates a single application, the insufficient-credits state renders the reset date.
 
 ---
 
@@ -402,7 +402,7 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 | Data 3: repo URL regex and canonical URL | **Accepted.** The `applications.github_repo_url` CHECK is the single source of truth. The route handler canonicalizes the URL (`lib/github/repo.ts`) **before** the RPC, so `request_hash` is computed over the canonical form. |
 | Data 4: admin MFA | **Accepted (D-18).** `admin_adjust_tokens` asserts `public.is_admin()`, which requires `aal2`. |
 | Data 5–8 | **Accepted** as written. |
-| Frontend 1: "credits" in the UI | **Accepted as the default (D-35)**, pending the product owner (MASTER_PLAN §15). Code, DB, API and error codes keep `token`. |
+| Frontend 1: "credits" in the UI | **Decided by the product owner (D-37).** Every UI label, message and email says **Credits** ("8 / 10 credits", "You don't have enough credits for this job."). Code, DB, API names and error codes keep `token` (e.g. `INSUFFICIENT_TOKENS`). |
 | Frontend 2: new key when the body changes | **Accepted (D-10).** §4 has been updated. |
 | Frontend 3: missing `Idempotency-Key` | **422 `VALIDATION_FAILED`** with `details.fields.idempotencyKey` (D-10). The API never returns 400. §4 and §6 have been updated. |
 | Frontend 4: pill denominator | **The API returns `total = granted + refunded + adjusted` (D-11).** The pill renders `balance / total`, which can exceed 10 in a month that received a refund. The tooltip explains the refund. |

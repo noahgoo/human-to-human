@@ -17,7 +17,7 @@
 | D1 | Applications should point at the resume the recruiter sees. If the applicant uploads a new resume after applying, which one does the recruiter get? | **Snapshot.** Add `applications.resume_id` (set by `apply_to_job` from `applicant_profiles.active_resume_id`). The recruiter always sees the resume that was active at Apply time. If the applicant deletes it, `resume_id` goes null and the UI says "Resume removed by applicant". | Backend to add to `apply_to_job` |
 | D2 | Can recruiters ever see an applicant's email? | **Only after shortlisting**, through the SECURITY DEFINER function `get_applicant_contact(application_id)`. `profiles.email` is not column-granted to `authenticated` at all. | Lead, Frontend |
 | D3 | Can recruiters see an applicant's parsed LinkedIn data (positions, skills, education)? | **No (MVP).** Recruiters see the resume, confidence and GitHub ratings only. LinkedIn tables are owner-only. Revisit with a consent toggle later. | Lead |
-| D4 | One recruiter, many companies? | **One non-rejected membership per recruiter** (partial unique index). Multiple recruiters per company is supported (locked). | Backend (company-verification) |
+| D4 | Recruiters and companies | **One non-rejected membership per recruiter and one per company** (two partial unique indexes). One recruiter per company is the product-owner decision for MVP (MASTER_PLAN D-44); multi-recruiter is Later. | Backend (company-verification) |
 | D5 | Hiding GitHub ratings from applicants vs. the GDPR right of access (Art. 15). AI-generated ratings about a person are personal data. | **The in-product UI and the self-service export hide ratings** (locked decision). A formal data-subject access request (DSAR) made to support is fulfilled in full, ratings included, through a service-role script. Counsel must confirm. | Lead (legal) |
 | D6 | Column-level encryption (pgsodium TCE / Vault) for PII columns? | **No column-level encryption in MVP.** Rely on Supabase disk encryption (AES-256), RLS, column grants and minimisation. No Vault secrets are needed: the stuck-work sweeper is an Inngest cron (MASTER_PLAN D-01). Reasoning is in §7.3. | Lead |
 | D7 | `audit_log` is not in the canonical table list. | **Add it (NEW).** Needed for resume access, status changes, verification decisions, exports and deletions. | Lead (Decision log) |
@@ -304,6 +304,10 @@ create table public.recruiter_memberships (
 );
 -- D4: at most one live membership per recruiter
 create unique index recruiter_memberships_one_live_uq on public.recruiter_memberships(profile_id)
+  where verification_status <> 'rejected';
+-- MVP: exactly ONE live recruiter per company (product owner, MASTER_PLAN D-44).
+-- A revoked (rejected) membership frees the company for an admin-reviewed reclaim.
+create unique index recruiter_memberships_one_per_company_uq on public.recruiter_memberships(company_id)
   where verification_status <> 'rejected';
 create index recruiter_memberships_company_verified_idx on public.recruiter_memberships(company_id, profile_id)
   where verification_status = 'verified';
@@ -1114,7 +1118,7 @@ Full definition, sort keys and pagination RPC are in [applicant-ranking.md §Des
 | `withdraw_application(p_application_id)` | definer | Applicant. From `submitted`/`shortlisted` only. No refund. |
 | `get_applicant_contact(p_application_id) → text` | definer | D2. Returns `profiles.email` if the caller is a job member and the application is `shortlisted`; logs `contact.revealed`. |
 | `set_my_role(p_role user_role)` | definer | Sets role once (`applicant` or `recruiter`); creates `applicant_profiles` for applicants. |
-| `mark_onboarded()` | definer | Sets `onboarded_at` only if prerequisites hold: applicant has an `active_resume_id` with `parse_status='succeeded'` (the LinkedIn import is optional, MASTER_PLAN D-08); recruiter has a non-rejected membership. Returns the missing items otherwise. |
+| `mark_onboarded()` | definer | Sets `onboarded_at` only if prerequisites hold: applicant has an `active_resume_id` with `parse_status='succeeded'` **and** an `active_linkedin_import_id` whose import is `succeeded` (both required, MASTER_PLAN D-39); recruiter has a non-rejected membership. Returns the missing items otherwise. |
 | `activate_linkedin_import(p_import_id)` | definer, **service role only** | Flips `active_linkedin_import_id` and deletes older imports in one transaction (linkedin-ingestion.md). |
 | `export_my_data() → jsonb` | definer | §7.5. |
 | `my_latest_fits(p_job_ids uuid[])` | STABLE, invoker | Frontend F5 (MASTER_PLAN D-23). Latest `succeeded` own fit per job: `job_id, id, confidence_score, band, resume_id, linkedin_import_id, job_updated_at, completed_at`. The app marks a row stale when those provenance ids or `job_updated_at` differ from the current ones. |
@@ -1233,7 +1237,7 @@ Parsers must also never log row contents (pino redaction on `row`, `record`; Sen
 ### 7.5 Data subject rights
 
 **Delete my data (account deletion).** Server action `deleteAccount` (Backend; Data specifies the sequence; MASTER_PLAN D-28). It requires a recent sign-in (< 5 min), writes `audit_log('account.delete_requested')`, then sends Inngest `account/deletion.requested`. The function runs:
-1. Recruiters only: if they are the last verified member of a company with open jobs, close those jobs (`status = 'closed'`).
+1. Recruiters only: close their company's open jobs (`status = 'closed'`), since the company has no other recruiter in MVP (D-44).
 2. Delete all Storage objects under `resumes/{uid}/` and `linkedin-exports/{uid}/` (Storage API, paged).
 3. `supabase.auth.admin.deleteUser(uid)`. This cascades `auth.users → profiles → everything` per §3.10.
 4. Insert `audit_log('account.deleted', subject_id = uid)` (no FK, so it survives).
@@ -1286,14 +1290,14 @@ Data owns no route handlers. The PostgREST/RPC surface below is what Backend and
 | Surface | Method / path | Auth | Request → response | Errors |
 |---|---|---|---|---|
 | RPC | `rpc('set_my_role', {p_role})` | authenticated, role null | → `{role}` | `FORBIDDEN` (already set / admin) |
-| RPC | `rpc('mark_onboarded')` | authenticated | → `{onboarded_at}` or `{missing: ['resume']}` | `VALIDATION_FAILED` |
+| RPC | `rpc('mark_onboarded')` | authenticated | → `{onboarded_at}` or `{missing: ['resume','linkedin']}` | `VALIDATION_FAILED` |
 | RPC | `rpc('set_application_status', {p_application_id, p_to_status, p_note})` | verified member | → application row | `FORBIDDEN`, `NOT_FOUND`, `CONFLICT` (bad transition) |
 | RPC | `rpc('withdraw_application', {p_application_id})` | applicant owner | → `{status:'withdrawn'}` | `NOT_FOUND`, `CONFLICT` |
 | RPC | `rpc('get_applicant_contact', {p_application_id})` | verified member | → `{email}` | `NOT_FOUND` (not a member or unknown id), `CONFLICT {reason:'not_shortlisted'}` (MASTER_PLAN D-15) |
 | RPC | `rpc('connections_at_company', {p_company_id})` | applicant | → rows | — (empty set) |
 | RPC | `rpc('job_applicant_rankings_page', …)` | verified member | see applicant-ranking.md | `FORBIDDEN` via empty set |
 | Server action (D-28) | `exportMyData` | any signed-in user, 3/day | → `{url, expiresAt}` (5-min signed JSON download) | `RATE_LIMITED` |
-| Server action (D-28) | `deleteAccount` | re-auth < 5 min | → `{}` and sign-out; emits `account/deletion.requested` | `FORBIDDEN {reason:'reauth_required'}`, `CONFLICT` (`last_company_admin`) |
+| Server action (D-28) | `deleteAccount` | re-auth < 5 min | → `{}` and sign-out; emits `account/deletion.requested` | `FORBIDDEN {reason:'reauth_required'}`, —  (a recruiter's open jobs are closed; D-44) |
 | HTTP (proposal) | `DELETE /api/v1/linkedin-imports/active` / `?scope=connections` | applicant | → `204` | `NOT_FOUND` |
 
 RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTER_PLAN §5.
@@ -1385,11 +1389,12 @@ _Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-
 | Item | Outcome |
 |---|---|
 | D1 resume snapshot, D2 email after shortlist, D3 no LinkedIn data for recruiters, D4 one membership per recruiter | **Accepted** (D-29, D-30). |
+| One recruiter per company | **Product owner (D-44).** New partial unique index `recruiter_memberships_one_per_company_uq` (§3.4). A recruiter's account deletion closes their company's open jobs (§7.5). |
 | D5 hidden ratings vs. GDPR access | **Accepted as the default, pending counsel (D-17).** The product UI and self-service export hide ratings. A formal DSAR is fulfilled in full through an audited support script. This is a launch-gate item. |
 | D6 no column encryption | **Accepted.** Vault and `pg_net` are dropped, because the sweeper is an Inngest cron (D-01). §1.3, §3.1 and §7.3 have been updated. |
 | D7 `audit_log`, D8 `company_aliases` | **Accepted (D-20)**, together with `work_email_verifications` and `blocked_email_domains`. |
 | D9 Profile.csv columns, D10 bucket `linkedin-exports` | **Accepted.** |
-| `mark_onboarded()` | **Resume only (D-08).** §5.3 and §8 have been updated. |
+| `mark_onboarded()` | **Resume and LinkedIn import both required (product owner, D-39; reverses D-08).** §5.3 and §8 have been updated. |
 | `jobs.work_mode` | **Added (D-21).** |
 | `my_latest_fits(p_job_ids)` | **Added (D-23)** for job cards. |
 | `linkedin_imports.uploaded_at` | **Added (D-14).** |
