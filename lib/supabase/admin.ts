@@ -11,6 +11,7 @@ export function supabaseAdmin(): SupabaseClient {
   }
   if (!client) {
     // Node 20 lacks a global WebSocket; Supabase realtime still initializes on createClient.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const WebSocket = require("ws");
     client = createClient(supabaseUrl(), supabaseSecretKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
