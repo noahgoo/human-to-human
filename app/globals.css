@@ -1,0 +1,135 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+/* Grounded Modern Utility (light only, D-47). Token values live here and nowhere else. */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-body: var(--body);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-success-fg: var(--success-fg);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-warning-fg: var(--warning-fg);
+  --color-token: var(--token);
+  --color-token-subtle: var(--token-subtle);
+  --color-token-fg: var(--token-fg);
+  --color-linkedin: var(--linkedin);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+
+  --shadow-1: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-2: 0 4px 6px -1px rgb(15 23 42 / 0.06), 0 2px 4px -2px rgb(15 23 42 / 0.05);
+  --shadow-3: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.05);
+  --shadow-bevel: inset 0 1px 0 0 rgb(255 255 255 / 0.12), 0 1px 2px 0 rgb(15 23 42 / 0.2);
+
+  --text-h1: 1.875rem;
+  --text-h1--line-height: 1.25;
+  --text-h1--letter-spacing: -0.02em;
+  --text-h1--font-weight: 700;
+  --text-h2: 1.25rem;
+  --text-h2--line-height: 1.3;
+  --text-h2--letter-spacing: -0.01em;
+  --text-h2--font-weight: 600;
+  --text-h3: 1.0625rem;
+  --text-h3--line-height: 1.4;
+  --text-h3--font-weight: 600;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.5;
+  --text-small: 0.78125rem;
+  --text-small--line-height: 1.4;
+  --text-small--font-weight: 500;
+  --text-metric: 2rem;
+  --text-metric--line-height: 1.1;
+  --text-metric--font-weight: 700;
+  --text-code: 0.78125rem;
+  --text-code--font-weight: 500;
+}
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #0f172a;
+  --primary-hover: #334155;
+  --primary-foreground: #ffffff;
+  --secondary: #ffffff;
+  --secondary-foreground: #0f172a;
+  --muted: #f1f5f9;
+  --muted-foreground: #64748b;
+  --body: #475569;
+  --accent: #f1f5f9;
+  --accent-foreground: #0f172a;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --border-strong: #cbd5e1;
+  --input: #e2e8f0;
+  --ring: #2563eb;
+  --link: #2563eb;
+  --success: #059669;
+  --success-subtle: #ecfdf5;
+  --success-fg: #065f46;
+  --warning: #d97706;
+  --warning-subtle: #fef3c7;
+  --warning-fg: #92400e;
+  --token: #2563eb;
+  --token-subtle: #eff6ff;
+  --token-fg: #1e40af;
+  --linkedin: #0a66c2;
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground text-body antialiased;
+  }
+  html {
+    @apply font-sans;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
