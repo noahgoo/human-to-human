@@ -171,3 +171,23 @@ export async function inspectLinkedInFiles(files: File[]): Promise<LinkedInInspe
     displayNames: zips.length === 1 ? [zips[0].name] : csvs.map((file) => file.name),
   };
 }
+
+/** Keep files already imported and overlay any kinds included in the new selection. */
+export function mergeLinkedInInspections(current: LinkedInInspection, added: LinkedInInspection): LinkedInInspection {
+  const filesPresent = LINKEDIN_FILES.filter(
+    (kind) => current.filesPresent.includes(kind) || added.filesPresent.includes(kind),
+  );
+  const counts = { ...current.counts };
+  if (added.filesPresent.includes("Connections")) {
+    counts.connections = added.counts.connections;
+    counts.companies = added.counts.companies;
+  }
+  if (added.filesPresent.includes("Positions")) counts.positions = added.counts.positions;
+  if (added.filesPresent.includes("Skills")) counts.skills = added.counts.skills;
+  if (added.filesPresent.includes("Education")) counts.education = added.counts.education;
+  return {
+    filesPresent,
+    counts,
+    displayNames: filesPresent.map((kind) => `${kind}.csv`),
+  };
+}

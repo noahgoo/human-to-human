@@ -15,7 +15,9 @@ function fixture(name: string): string {
   return fs.readFileSync(path.join(FIXTURE_DIR, name), "utf8");
 }
 
-describe("onboarding LinkedIn parsers", () => {
+const hasFixture = fs.existsSync(FIXTURE_DIR);
+
+describe.skipIf(!hasFixture)("onboarding LinkedIn parsers", () => {
   it("parses the Basic export fixture", () => {
     const profile = parseProfileForStorage(fixture("Profile.csv"));
     expect(profile.headline).toContain("BYU");

@@ -117,7 +117,7 @@ export default async function AdminCompaniesPage({
       )}
 
       <div className="mt-8">
-        <BlockedDomains />
+        <BlockedDomains domains={queue.blockedDomains} />
       </div>
     </div>
   );

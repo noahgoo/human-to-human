@@ -11,6 +11,8 @@ export type DropzonePhase = "idle" | "uploading" | "processing" | "done" | "erro
 export interface DropzoneFile {
   name: string;
   detail?: string;
+  /** Overrides the dropzone phase for this row, so files already imported stay done. */
+  status?: DropzonePhase;
 }
 
 export function formatBytes(bytes: number): string {
@@ -28,12 +30,14 @@ export function FileDropzone({
   accept,
   maxBytes,
   maxBytesByExtension,
+  filterPicker = true,
   multiple = false,
   phase = "idle",
   progress = 0,
   error: externalError = null,
   files = [],
   onFiles,
+  onAddFiles,
   onRemove,
   disabled = false,
   idleTitle,
@@ -41,16 +45,20 @@ export function FileDropzone({
   processingLabel = "Working…",
   doneAnnouncement,
   replaceLabel = "Replace",
+  addLabel = "Add files",
 }: {
   accept: string[];
   maxBytes: number;
   maxBytesByExtension?: Record<string, number>;
+  /** When false, the native dialog is unfiltered. macOS treats accept=".zip" as a package and then disables the CSV files inside it. */
+  filterPicker?: boolean;
   multiple?: boolean;
   phase?: DropzonePhase;
   progress?: number;
   error?: string | null;
   files?: DropzoneFile[];
   onFiles: (files: File[]) => void;
+  onAddFiles?: (files: File[]) => void;
   onRemove?: () => void;
   disabled?: boolean;
   idleTitle: string;
@@ -58,8 +66,10 @@ export function FileDropzone({
   processingLabel?: string;
   doneAnnouncement?: string;
   replaceLabel?: string;
+  addLabel?: string;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const pickMode = useRef<"replace" | "add">("replace");
   const errorId = useId();
   const [localError, setLocalError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -68,7 +78,8 @@ export function FileDropzone({
   const showFiles = files.length > 0 && phase !== "idle";
   const acceptList = accept.map((item) => item.toLowerCase());
 
-  function openPicker() {
+  function openPicker(mode: "replace" | "add") {
+    pickMode.current = mode;
     inputRef.current?.click();
   }
 
@@ -88,7 +99,7 @@ export function FileDropzone({
     return null;
   }
 
-  function take(list: FileList | File[]) {
+  function take(list: FileList | File[], mode: "replace" | "add") {
     const next = Array.from(list);
     const problem = validate(next);
     if (problem) {
@@ -96,7 +107,8 @@ export function FileDropzone({
       return;
     }
     setLocalError(null);
-    onFiles(next);
+    if (mode === "add" && onAddFiles) onAddFiles(next);
+    else onFiles(next);
   }
 
   const announcement =
@@ -115,10 +127,12 @@ export function FileDropzone({
         type="file"
         className="sr-only"
         tabIndex={-1}
-        accept={accept.join(",")}
+        accept={filterPicker ? accept.join(",") : undefined}
         multiple={multiple}
         onChange={(event) => {
-          if (event.target.files) take(event.target.files);
+          const mode = pickMode.current;
+          pickMode.current = "replace";
+          if (event.target.files) take(event.target.files, mode);
           event.target.value = "";
         }}
       />
@@ -133,7 +147,7 @@ export function FileDropzone({
           onDrop={(event) => {
             event.preventDefault();
             setDragOver(false);
-            if (!disabled && !busy) take(event.dataTransfer.files);
+            if (!disabled && !busy) take(event.dataTransfer.files, "replace");
           }}
           className={cn(
             "rounded-xl border-2 border-dashed bg-muted/50 p-6 text-center transition-colors",
@@ -144,7 +158,7 @@ export function FileDropzone({
             type="button"
             disabled={disabled || busy}
             aria-describedby={error ? errorId : undefined}
-            onClick={openPicker}
+            onClick={() => openPicker("replace")}
             className="flex w-full flex-col items-center rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
             <span className="mb-2.5 flex size-10 items-center justify-center rounded-full border bg-card shadow-1">
@@ -166,18 +180,21 @@ export function FileDropzone({
           onDrop={(event) => {
             event.preventDefault();
             setDragOver(false);
-            if (!disabled && !busy) take(event.dataTransfer.files);
+            if (!disabled && !busy) take(event.dataTransfer.files, onAddFiles ? "add" : "replace");
           }}
           className={cn("space-y-2 rounded-xl", dragOver && "ring-2 ring-ring/40")}
         >
           <ul className="space-y-2">
-            {files.map((file) => (
+            {files.map((file) => {
+              const rowPhase = file.status ?? phase;
+              const rowBusy = rowPhase === "uploading" || rowPhase === "processing";
+              return (
               <li key={file.name} className="flex items-center gap-2.5 rounded-lg border bg-muted/50 px-3 py-2.5">
-                {phase === "done" ? (
+                {rowPhase === "done" ? (
                   <span className="text-success" aria-hidden>
                     ✓
                   </span>
-                ) : busy ? (
+                ) : rowBusy ? (
                   <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" aria-hidden />
                 ) : (
                   <FileText className="size-4 shrink-0 text-copy" aria-hidden />
@@ -187,7 +204,8 @@ export function FileDropzone({
                   {file.detail && <span className="block text-small text-muted-foreground">{file.detail}</span>}
                 </span>
               </li>
-            ))}
+              );
+            })}
           </ul>
           {phase === "uploading" && (
             <div>
@@ -204,13 +222,25 @@ export function FileDropzone({
             </div>
           )}
           <div className="flex flex-wrap gap-2">
+            {onAddFiles && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={disabled || busy}
+                aria-describedby={error ? errorId : undefined}
+                onClick={() => openPicker("add")}
+              >
+                {addLabel}
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
               size="sm"
               disabled={disabled || busy}
               aria-describedby={error ? errorId : undefined}
-              onClick={openPicker}
+              onClick={() => openPicker("replace")}
             >
               {replaceLabel}
             </Button>

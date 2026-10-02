@@ -1,15 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { DEMO_ROLE_COOKIE } from "@/lib/auth/session";
+import { createSupabaseServer } from "@/lib/supabase/server";
 
-function signOut(req: NextRequest) {
-  const response = NextResponse.redirect(new URL("/sign-in", req.url), 303);
-  response.cookies.set(DEMO_ROLE_COOKIE, "", {
-    path: "/",
-    httpOnly: true,
-    sameSite: "lax",
-    maxAge: 0,
-  });
-  return response;
+async function signOut(req: NextRequest) {
+  const supabase = await createSupabaseServer();
+  await supabase.auth.signOut();
+  return NextResponse.redirect(new URL("/sign-in", req.url), 303);
 }
 
 export function GET(req: NextRequest) {

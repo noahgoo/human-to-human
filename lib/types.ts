@@ -12,14 +12,26 @@ export type FitBand = "strong" | "good" | "moderate" | "limited";
 export type RepoCategory = "dataArchitecture" | "performance" | "deployment" | "codeQuality" | "teamTopology";
 export type ParseStatus = "pending" | "running" | "succeeded" | "failed";
 
+/** One row per auth user (`profiles`). */
+export interface Profile {
+  id: string;
+  email: string;
+  fullName: string;
+  avatarUrl: string | null;
+  role: Role | null;
+}
+
 export interface Company {
   id: string;
   name: string;
   website: string | null;
   logoUrl: string | null;
   verificationStatus: VerificationStatus;
+  /** Admin note when a company is rejected or sent for review. */
+  reviewReason: string | null;
   domains: string[];
   description: string | null;
+  createdAt: string;
 }
 
 export interface Job {

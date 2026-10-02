@@ -73,8 +73,10 @@ export async function startCompanyClaim(input: { companyName: string; website: s
     website: website.value,
     logoUrl: null,
     verificationStatus: "pending",
+    reviewReason: null,
     domains: domain ? [domain] : [],
     description: null,
+    createdAt: new Date().toISOString(),
   });
   store.memberships.push({
     recruiterId: session.userId,

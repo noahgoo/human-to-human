@@ -1,26 +1,12 @@
-// Mock session for the UI-only MVP. Every layout and page uses these exports; a real
-// Supabase implementation can replace the bodies later without changing call sites.
-//
-// The demo cookie `np_demo_role` selects the persona:
-//   applicant      Jordan Lee, onboarded, has applications
-//   applicant_new  fresh applicant, goes through /onboarding/applicant
-//   bobby          Bobby, fresh applicant, goes through /onboarding/applicant
-//   recruiter      Priya Shah, verified recruiter at Lumen Labs
-//   recruiter_new  fresh recruiter, goes through /onboarding/recruiter
-//   admin          platform admin
-//   none / unset   signed out
+// Session for every layout, page and server action. Identity comes from Supabase Auth
+// (cookie session); profile and membership rows are read with the secret-key client.
 import "server-only";
-import { cookies } from "next/headers";
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { Role, VerificationStatus } from "@/lib/types";
-import {
-  db,
-  DEMO_APPLICANT_ID,
-  DEMO_BOBBY_ID,
-  DEMO_NEW_APPLICANT_ID,
-  DEMO_NEW_RECRUITER_ID,
-  DEMO_RECRUITER_ID,
-} from "@/lib/mock/db";
+import { admin } from "@/lib/supabase/admin";
+import { createSupabaseServer } from "@/lib/supabase/server";
+import { profiles as seedProfiles, DEMO_ADMIN_ID, DEMO_APPLICANT_ID, DEMO_NEW_APPLICANT_ID, DEMO_NEW_RECRUITER_ID, DEMO_RECRUITER_ID } from "@/lib/mock/seed";
 
 export interface AppSession {
   userId: string;
@@ -35,38 +21,59 @@ export interface AppSession {
   companyName: string | null;
 }
 
-export const DEMO_ROLE_COOKIE = "np_demo_role";
-export type DemoPersona = "applicant" | "applicant_new" | "bobby" | "recruiter" | "recruiter_new" | "admin" | "none";
+/** One-click demo sign-in (/demo?role=…). Each persona is a seeded Supabase user. */
+export type DemoPersona = "applicant" | "applicant_new" | "recruiter" | "recruiter_new" | "admin";
 
-const PERSONAS: Record<Exclude<DemoPersona, "none">, { userId: string; email: string; fullName: string; role: Role | null }> = {
-  applicant: { userId: DEMO_APPLICANT_ID, email: "jordan@example.com", fullName: "Jordan Lee", role: "applicant" },
-  applicant_new: { userId: DEMO_NEW_APPLICANT_ID, email: "casey.new@example.com", fullName: "Casey Rivera", role: "applicant" },
-  bobby: { userId: DEMO_BOBBY_ID, email: "bobby@example.com", fullName: "Bobby", role: "applicant" },
-  recruiter: { userId: DEMO_RECRUITER_ID, email: "priya@lumenlabs.dev", fullName: "Priya Shah", role: "recruiter" },
-  recruiter_new: { userId: DEMO_NEW_RECRUITER_ID, email: "sam@brightforge.io", fullName: "Sam Okoro", role: "recruiter" },
-  admin: { userId: "user-admin-demo", email: "admin@nexuspulse.dev", fullName: "Admin", role: "admin" },
+const PERSONA_SEED_ID: Record<DemoPersona, string> = {
+  applicant: DEMO_APPLICANT_ID,
+  applicant_new: DEMO_NEW_APPLICANT_ID,
+  recruiter: DEMO_RECRUITER_ID,
+  recruiter_new: DEMO_NEW_RECRUITER_ID,
+  admin: DEMO_ADMIN_ID,
 };
 
-export async function getSession(): Promise<AppSession | null> {
-  const store = await cookies();
-  const persona = store.get(DEMO_ROLE_COOKIE)?.value as DemoPersona | undefined;
-  if (!persona || persona === "none" || !(persona in PERSONAS)) return null;
-  const p = PERSONAS[persona as Exclude<DemoPersona, "none">];
-  const mock = db();
-  const membership = p.role === "recruiter" ? mock.memberships.find((m) => m.recruiterId === p.userId) : undefined;
-  const company = membership ? mock.companies.find((c) => c.id === membership.companyId) : undefined;
-  return {
-    userId: p.userId,
-    email: p.email,
-    fullName: p.fullName,
-    avatarUrl: null,
-    role: p.role,
-    onboarded: p.role === "admin" || mock.onboardedUserIds.includes(p.userId),
-    membershipStatus: membership?.verificationStatus ?? null,
-    companyId: company?.id ?? null,
-    companyName: company?.name ?? null,
-  };
+export function demoEmail(persona: string): string | null {
+  if (!(persona in PERSONA_SEED_ID)) return null;
+  return seedProfiles.find((p) => p.id === PERSONA_SEED_ID[persona as DemoPersona])?.email ?? null;
 }
+
+/** True until Supabase env vars are set. */
+export function isDemoMode(): boolean {
+  return !process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+}
+
+export const getSession = cache(async (): Promise<AppSession | null> => {
+  const supabase = await createSupabaseServer();
+  const { data } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (!userId) return null;
+
+  const db = admin();
+  const [{ data: profile }, { data: membership }] = await Promise.all([
+    db.from("profiles").select("id, email, full_name, avatar_url, role, onboarded_at").eq("id", userId).maybeSingle(),
+    db
+      .from("recruiter_memberships")
+      .select("verification_status, company_id, company:companies(name)")
+      .eq("profile_id", userId)
+      .neq("verification_status", "rejected")
+      .maybeSingle(),
+  ]);
+  if (!profile) return null;
+
+  const role = (profile.role as Role | null) ?? null;
+  const company = (membership?.company as { name: string } | null | undefined) ?? null;
+  return {
+    userId,
+    email: profile.email,
+    fullName: profile.full_name ?? profile.email,
+    avatarUrl: profile.avatar_url,
+    role,
+    onboarded: role === "admin" || profile.onboarded_at != null,
+    membershipStatus: role === "recruiter" ? ((membership?.verification_status as VerificationStatus | undefined) ?? null) : null,
+    companyId: role === "recruiter" ? (membership?.company_id ?? null) : null,
+    companyName: role === "recruiter" ? (company?.name ?? null) : null,
+  };
+});
 
 export const ROLE_HOME: Record<Role, string> = {
   applicant: "/jobs",
@@ -102,6 +109,6 @@ export async function requireOnboarding(role: Exclude<Role, "admin">): Promise<A
 
 /** Call from a server action when onboarding finishes. */
 export async function markOnboarded(userId: string): Promise<void> {
-  const mock = db();
-  if (!mock.onboardedUserIds.includes(userId)) mock.onboardedUserIds.push(userId);
+  const { error } = await admin().from("profiles").update({ onboarded_at: new Date().toISOString() }).eq("id", userId).is("onboarded_at", null);
+  if (error) throw new Error(`markOnboarded: ${error.message}`);
 }
