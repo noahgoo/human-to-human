@@ -1,0 +1,30 @@
+export const FIT_SOURCES = ["richMedia", "profile", "github", "resume"] as const;
+export type FitSource = (typeof FIT_SOURCES)[number];
+
+export const FIT_AGENTS = ["softwareEngineer", "dataScientist", "resumeAnalyst"] as const;
+export type FitAgent = (typeof FIT_AGENTS)[number];
+
+/** Which evidence each agent may score. Resume is only for the resume analyst. */
+export const AGENT_SOURCES: Record<FitAgent, readonly FitSource[]> = {
+  softwareEngineer: ["richMedia", "profile", "github"],
+  dataScientist: ["richMedia", "profile", "github"],
+  resumeAnalyst: ["resume"],
+};
+
+/** Ordered low to high. Index 0 is no fit; index 4 is the candidate has done this work. */
+export const FIT_CRITERIA = [
+  "No supporting evidence that the candidate meets the job requirements.",
+  "Only weak or adjacent evidence, with the core requirements missing.",
+  "Partial evidence for some requirements, with important gaps.",
+  "Clear evidence for most requirements.",
+  "The evidence shows the candidate has done this work.",
+] as const;
+
+export const AGENT_INSTRUCTIONS: Record<FitAgent, string> = {
+  softwareEngineer:
+    "You are a software engineer. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",
+  dataScientist:
+    "You are a data scientist. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh analysis, modeling, experimentation, and data work. Ignore name, school, photos, and location.",
+  resumeAnalyst:
+    "You are a hiring analyst. Using only state.evidence (the candidate resume), judge how well the candidate meets state.jobTitle and state.jobRequirements. Match skills, experience, and projects to the posting. Ignore name, gender, age, photos, address, and school prestige.",
+};
