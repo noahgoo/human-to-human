@@ -1,6 +1,7 @@
 import "server-only";
 import { getSession } from "@/lib/auth/session";
 import { db } from "@/lib/mock/db";
+import { getLinkedInImportForApplicant } from "@/lib/data/linkedin-from-supabase";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   getLiveApplicationForJob,
@@ -122,7 +123,15 @@ export async function getLatestSucceededFits(applicantId: string): Promise<Map<s
   return map;
 }
 
-export function applicantHasLinkedIn(applicantId: string): boolean {
+export async function applicantHasLinkedIn(applicantId: string): Promise<boolean> {
+  if (isSupabaseConfigured()) {
+    const info = await getLinkedInImportForApplicant(applicantId);
+    return Boolean(
+      info &&
+        info.status === "succeeded" &&
+        (info.filesPresent.includes("Connections") || info.counts.connections > 0),
+    );
+  }
   const applicant = db().applicants.find((a) => a.id === applicantId);
   return Boolean(
     applicant?.linkedin &&

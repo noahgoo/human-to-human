@@ -212,7 +212,7 @@ export function CheckFitPanel({
   useEffect(() => {
     if (!autoStart || ready || autoStarted.current) return;
     autoStarted.current = true;
-    void start(false, false);
+    void start(false);
   }, [autoStart, ready]);
 
   const blocked = applied
@@ -292,7 +292,9 @@ export function CheckFitPanel({
                   </span>
                   <span>
                     <span className="sr-only">{MET_LABEL[item.met]}: </span>
-                    <span className="text-foreground">{item.requirement}</span>
+                    <span className="text-foreground">
+                      {item.requirement === "LinkedIn rich media" ? "LinkedIn Posts" : item.requirement}
+                    </span>
                     <span className="ml-2 text-small text-muted-foreground">{MET_LABEL[item.met]}</span>
                     {item.evidence && <span className="mt-0.5 block text-small text-muted-foreground">{item.evidence}</span>}
                   </span>

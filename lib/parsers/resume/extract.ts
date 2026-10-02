@@ -40,7 +40,8 @@ function decodeXml(value: string): string {
 
 async function textFromPdf(bytes: Uint8Array): Promise<string> {
   const { extractText } = await import("unpdf");
-  const { text } = await extractText(bytes, { mergePages: true });
+  // pdf.js transfers the buffer into its worker and detaches the caller's copy.
+  const { text } = await extractText(bytes.slice(), { mergePages: true });
   return text.trim();
 }
 

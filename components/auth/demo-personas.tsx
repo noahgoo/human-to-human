@@ -2,7 +2,7 @@ import Link from "next/link";
 
 const PERSONAS = [
   { href: "/demo?role=applicant", label: "Carter Lee, applicant" },
-  { href: "/demo?role=applicant_new", label: "Noah Goo, new applicant (onboarding)" },
+  { href: "/demo?role=applicant_new", label: "Collin Smith, new applicant (onboarding)" },
   { href: "/demo?role=recruiter", label: "Steve, verified recruiter at Redo" },
   { href: "/demo?role=admin", label: "Admin" },
 ] as const;

@@ -14,6 +14,6 @@ export async function GET(_request: Request, context: { params: Promise<{ jobId:
   const job = await getJobForApplicant(jobId, auth.session.userId);
   if (!job) return apiError(404, "NOT_FOUND");
 
-  const { data, total } = connectionsAtCompany(auth.session.userId, job.company.name);
+  const { data, total } = await connectionsAtCompany(auth.session.userId, job.company.name);
   return Response.json({ data, total }, { headers: { "Cache-Control": "no-store" } });
 }

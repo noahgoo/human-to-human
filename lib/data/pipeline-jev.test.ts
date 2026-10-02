@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { loadApplicantsPage } from "@/lib/data/pipeline";
 
 describe("recruiter pipeline joins", () => {
-  it("attaches Jev sub-scores and repo rows for the Redo full-stack role", async () => {
-    const page = await loadApplicantsPage("job-redo-fullstack", "co-redo", {
+  it("attaches Jev sub-scores and repo rows for the Redo returns product role", async () => {
+    const page = await loadApplicantsPage("job-redo-product", "co-redo", {
       status: "active",
       sort: "rank",
       minConfidence: null,

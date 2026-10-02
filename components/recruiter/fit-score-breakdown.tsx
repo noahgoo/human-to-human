@@ -1,7 +1,7 @@
 import type { EvaluationStatus } from "@/lib/types";
 
 const ROWS = [
-  { key: "richMedia" as const, label: "LinkedIn rich media" },
+  { key: "richMedia" as const, label: "LinkedIn Posts" },
   { key: "profile" as const, label: "LinkedIn profile" },
   { key: "resume" as const, label: "Resume" },
 ];

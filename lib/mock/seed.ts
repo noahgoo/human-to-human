@@ -5,7 +5,7 @@
 //
 // Cast:
 //   Carter Lee  onboarded applicant, applied to Waystar and Redo
-//   Noah Goo    new applicant (goes through onboarding)
+//   Collin Smith  new applicant (goes through onboarding)
 //   Steve       verified recruiter at Redo, login stays steve@neighbor.com
 //   Admin       platform admin
 import type {
@@ -59,7 +59,7 @@ const priorPeriod = (days: number) => new Date(Math.min(now, periodStart) - days
 
 export const profiles: Profile[] = [
   { id: DEMO_APPLICANT_ID, email: "carter@example.com", fullName: "Carter Lee", avatarUrl: null, role: "applicant" },
-  { id: DEMO_NEW_APPLICANT_ID, email: "noah@example.com", fullName: "Noah Goo", avatarUrl: null, role: "applicant" },
+  { id: DEMO_NEW_APPLICANT_ID, email: "noah@example.com", fullName: "Collin Smith", avatarUrl: null, role: "applicant" },
   { id: DEMO_RECRUITER_ID, email: "steve@neighbor.com", fullName: "Steve", avatarUrl: null, role: "recruiter" },
   { id: DEMO_NEW_RECRUITER_ID, email: "sam@brightforge.io", fullName: "Sam Okoro", avatarUrl: null, role: "recruiter" },
   { id: DEMO_ADMIN_ID, email: "admin@nexuspulse.dev", fullName: "Admin", avatarUrl: null, role: "admin" },
@@ -261,7 +261,7 @@ export const connections: Connection[] = [
 
 // ---------- applications (+ application_events) ----------
 //
-// Steve's pipeline for job-redo-fullstack covers every ranking state:
+// Steve's pipeline for job-redo-product covers every ranking state:
 //   Avery   shortlisted, complete     Morgan  repo review running (incomplete)
 //   Carter  submitted, complete       Riley   repo review failed (incomplete)
 //   Sam     submitted, complete       Taylor  rejected
@@ -272,7 +272,7 @@ const submitted = (at: string): Application["events"] => [{ fromStatus: null, to
 
 export const applications: Application[] = [
   {
-    id: "app-carter-neighbor", jobId: "job-redo-fullstack", applicantId: DEMO_APPLICANT_ID, status: "submitted", tokenCost: 3,
+    id: "app-carter-neighbor", jobId: "job-redo-product", applicantId: DEMO_APPLICANT_ID, status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/carterlee/storage-search", fitEvaluationId: "fit-carter-neighbor",
     submittedAt: thisMonth(30), updatedAt: thisMonth(30), events: submitted(thisMonth(30)),
   },
@@ -290,7 +290,7 @@ export const applications: Application[] = [
     ],
   },
   {
-    id: "app-avery-neighbor", jobId: "job-redo-fullstack", applicantId: "user-avery", status: "shortlisted", tokenCost: 3,
+    id: "app-avery-neighbor", jobId: "job-redo-product", applicantId: "user-avery", status: "shortlisted", tokenCost: 3,
     githubRepoUrl: "https://github.com/averychen/booking-api", fitEvaluationId: "fit-avery-neighbor",
     submittedAt: hoursAgo(70), updatedAt: hoursAgo(5),
     events: [
@@ -299,22 +299,22 @@ export const applications: Application[] = [
     ],
   },
   {
-    id: "app-sam-neighbor", jobId: "job-redo-fullstack", applicantId: "user-sam-patel", status: "submitted", tokenCost: 3,
+    id: "app-sam-neighbor", jobId: "job-redo-product", applicantId: "user-sam-patel", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/sampatel/geo-index", fitEvaluationId: "fit-sam-neighbor",
     submittedAt: hoursAgo(50), updatedAt: hoursAgo(50), events: submitted(hoursAgo(50)),
   },
   {
-    id: "app-morgan-neighbor", jobId: "job-redo-fullstack", applicantId: "user-morgan", status: "submitted", tokenCost: 3,
+    id: "app-morgan-neighbor", jobId: "job-redo-product", applicantId: "user-morgan", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/morgandiaz/listing-search", fitEvaluationId: "fit-morgan-neighbor",
     submittedAt: hoursAgo(3), updatedAt: hoursAgo(3), events: submitted(hoursAgo(3)),
   },
   {
-    id: "app-riley-neighbor", jobId: "job-redo-fullstack", applicantId: "user-riley", status: "submitted", tokenCost: 3,
+    id: "app-riley-neighbor", jobId: "job-redo-product", applicantId: "user-riley", status: "submitted", tokenCost: 3,
     githubRepoUrl: "https://github.com/rileybrooks/payouts-service", fitEvaluationId: "fit-riley-neighbor",
     submittedAt: hoursAgo(26), updatedAt: hoursAgo(26), events: submitted(hoursAgo(26)),
   },
   {
-    id: "app-taylor-neighbor", jobId: "job-redo-fullstack", applicantId: "user-taylor", status: "rejected", tokenCost: 3,
+    id: "app-taylor-neighbor", jobId: "job-redo-product", applicantId: "user-taylor", status: "rejected", tokenCost: 3,
     githubRepoUrl: "https://github.com/taylorkim/todo-api", fitEvaluationId: "fit-taylor-neighbor",
     submittedAt: hoursAgo(90), updatedAt: hoursAgo(40),
     events: [
@@ -335,7 +335,7 @@ const neighborReqs = {
 
 const fitEvaluationRows: FitEvaluation[] = [
   {
-    id: "fit-carter-neighbor", jobId: "job-redo-fullstack", applicantId: DEMO_APPLICANT_ID, status: "succeeded",
+    id: "fit-carter-neighbor", jobId: "job-redo-product", applicantId: DEMO_APPLICANT_ID, status: "succeeded",
     confidenceScore: 84, band: "good", createdAt: thisMonth(31),
     explanation:
       "Strong backend fit: Carter runs high-volume Go and TypeScript services at Podium and has real Postgres performance work. Geospatial search isn't evidenced, and he has about 4 years of experience against the 5+ asked. Two connections at Neighbor, including an engineering manager.",
@@ -358,7 +358,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-avery-neighbor", jobId: "job-redo-fullstack", applicantId: "user-avery", status: "succeeded",
+    id: "fit-avery-neighbor", jobId: "job-redo-product", applicantId: "user-avery", status: "succeeded",
     confidenceScore: 92, band: "strong", createdAt: hoursAgo(71),
     explanation:
       "Direct match: Avery led booking and payouts for a two-sided rental marketplace in Go and built geospatial availability search on PostGIS.",
@@ -370,7 +370,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-sam-neighbor", jobId: "job-redo-fullstack", applicantId: "user-sam-patel", status: "succeeded",
+    id: "fit-sam-neighbor", jobId: "job-redo-product", applicantId: "user-sam-patel", status: "succeeded",
     confidenceScore: 76, band: "good", createdAt: hoursAgo(51),
     explanation: "Production Go and Postgres experience with payments exposure at Weave. No search or geospatial work, and no marketplace background.",
     requirements: [
@@ -381,7 +381,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-morgan-neighbor", jobId: "job-redo-fullstack", applicantId: "user-morgan", status: "succeeded",
+    id: "fit-morgan-neighbor", jobId: "job-redo-product", applicantId: "user-morgan", status: "succeeded",
     confidenceScore: 88, band: "strong", createdAt: hoursAgo(4),
     explanation: "Deep listing search and geospatial ranking experience at Zillow, at high scale. Marketplace experience is adjacent rather than two-sided.",
     requirements: [
@@ -392,7 +392,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-riley-neighbor", jobId: "job-redo-fullstack", applicantId: "user-riley", status: "succeeded",
+    id: "fit-riley-neighbor", jobId: "job-redo-product", applicantId: "user-riley", status: "succeeded",
     confidenceScore: 66, band: "moderate", createdAt: hoursAgo(27),
     explanation: "Node.js payments experience at Divvy is relevant, but seniority is below the bar and search work isn't evidenced.",
     requirements: [
@@ -403,7 +403,7 @@ const fitEvaluationRows: FitEvaluation[] = [
     ],
   },
   {
-    id: "fit-taylor-neighbor", jobId: "job-redo-fullstack", applicantId: "user-taylor", status: "succeeded",
+    id: "fit-taylor-neighbor", jobId: "job-redo-product", applicantId: "user-taylor", status: "succeeded",
     confidenceScore: 48, band: "limited", createdAt: hoursAgo(91),
     explanation: "Agency full-stack work with small-scale MySQL APIs. Little evidence of backend services at scale, Postgres, or marketplaces.",
     requirements: [

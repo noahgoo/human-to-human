@@ -12,7 +12,7 @@ import { WithdrawDialog } from "@/components/applications/withdraw-dialog";
 import { RepoScoreCard } from "@/components/recruiter/repo-score-card";
 
 const JEV_ROWS: Array<{ key: keyof Omit<SavedJevScores, "average">; label: string }> = [
-  { key: "richMedia", label: "LinkedIn rich media" },
+  { key: "richMedia", label: "LinkedIn Posts" },
   { key: "profile", label: "LinkedIn profile" },
   { key: "resume", label: "Resume" },
 ];

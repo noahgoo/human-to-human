@@ -7,6 +7,8 @@ import { db, newId } from "@/lib/mock/db";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getLiveJob } from "@/lib/data/live-store";
 import { loadStoredResumeText, usableResumeText } from "@/lib/data/resume";
+import { normalizeCompanyName } from "@/lib/linkedin/company-name";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { FitEvaluation, FitRequirement, Job } from "@/lib/types";
 
 const FRESH_MS = 24 * 60 * 60 * 1000;
@@ -98,7 +100,7 @@ export function freshSucceededFit(jobId: string, applicantId: string): FitEvalua
 
 const SOURCE_LABEL: Record<FitSource, string> = {
   profile: "LinkedIn profile",
-  richMedia: "LinkedIn rich media",
+  richMedia: "LinkedIn Posts",
   resume: "Resume",
   github: "GitHub",
 };
@@ -256,10 +258,12 @@ export function toFitDto(fit: FitEvaluation) {
   };
 }
 
-export function connectionsAtCompany(applicantId: string, companyName: string) {
-  const target = companyName.trim().toLowerCase();
+export async function connectionsAtCompany(applicantId: string, companyName: string) {
+  const target = normalizeCompanyName(companyName);
+  if (!target) return { data: [], total: 0 };
+  if (isSupabaseConfigured()) return liveConnectionsAtCompany(applicantId, target);
   const data = db()
-    .connections.filter((c) => c.ownerId === applicantId && c.companyName.trim().toLowerCase() === target)
+    .connections.filter((c) => c.ownerId === applicantId && normalizeCompanyName(c.companyName) === target)
     .map((c) => ({
       id: c.id,
       firstName: c.firstName,
@@ -267,4 +271,31 @@ export function connectionsAtCompany(applicantId: string, companyName: string) {
       position: c.position,
     }));
   return { data, total: data.length };
+}
+
+async function liveConnectionsAtCompany(applicantId: string, companyName: string) {
+  const admin = supabaseAdmin();
+  const { data: profile } = await admin
+    .from("applicant_profiles")
+    .select("active_linkedin_import_id")
+    .eq("profile_id", applicantId)
+    .maybeSingle();
+  let query = admin
+    .from("connections")
+    .select("id, first_name, last_name, position")
+    .eq("applicant_id", applicantId)
+    .eq("company_name_normalized", companyName)
+    .order("last_name", { ascending: true })
+    .limit(50);
+  const importId = profile?.active_linkedin_import_id;
+  if (importId) query = query.eq("import_id", importId);
+  const { data, error } = await query;
+  if (error || !data) return { data: [], total: 0 };
+  const people = data.map((row) => ({
+    id: String(row.id),
+    firstName: String(row.first_name ?? ""),
+    lastName: String(row.last_name ?? ""),
+    position: row.position ? String(row.position) : null,
+  }));
+  return { data: people, total: people.length };
 }

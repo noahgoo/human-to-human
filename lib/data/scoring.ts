@@ -8,7 +8,7 @@ export interface SavedJevScores {
 }
 
 const JEV_LABEL = {
-  richMedia: "LinkedIn rich media",
+  richMedia: "LinkedIn Posts",
   profile: "LinkedIn profile",
   resume: "Resume",
 } as const;
@@ -24,7 +24,10 @@ export function jevScoresFromFit(fit: FitEvaluation | undefined): SavedJevScores
   const saved = fit?.sourceScores;
   const succeeded = fit?.status === "succeeded";
   return {
-    richMedia: saved?.richMedia ?? scoreFromEvidence(fit, JEV_LABEL.richMedia),
+    richMedia:
+      saved?.richMedia ??
+      scoreFromEvidence(fit, JEV_LABEL.richMedia) ??
+      scoreFromEvidence(fit, "LinkedIn rich media"),
     profile: saved?.profile ?? scoreFromEvidence(fit, JEV_LABEL.profile),
     resume: saved?.resume ?? scoreFromEvidence(fit, JEV_LABEL.resume),
     average: succeeded ? (fit?.confidenceScore ?? null) : null,
