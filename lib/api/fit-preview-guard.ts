@@ -20,7 +20,7 @@ export async function assertFitPreviewAccess(request: Request): Promise<NextResp
   const secretOk = secret && bearer === `Bearer ${secret}`;
 
   if (!secretOk) {
-    const session = await getSession();
+    const session = await readSessionSafely();
     const recruiterOk =
       session?.role === "recruiter" && session.membershipStatus === "verified" && session.onboarded;
     const adminOk = session?.role === "admin";
@@ -52,6 +52,14 @@ export async function assertFitPreviewAccess(request: Request): Promise<NextResp
     );
   }
   return null;
+}
+
+async function readSessionSafely() {
+  try {
+    return await getSession();
+  } catch {
+    return null;
+  }
 }
 
 function clientIp(request: Request): string {
