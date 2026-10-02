@@ -473,4 +473,35 @@ _Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend
 
 **7. Status transitions.** data.md's `set_application_status` allows `rejected → shortlisted` and `shortlisted → submitted`, and §4 lists `'submitted'` as a target. Frontend adopts this (F10): "Move back to New" and "Reconsider" appear on the detail page only, and Reconsider warns that a rejection email was already sent. **Backend:** confirm that a "reconsidered" applicant gets a shortlist email after the earlier rejection email, and whether moving shortlisted → submitted sends anything (frontend assumes no email).
 
+### Backend review
+
+**Agree. I have adopted these in my docs:**
+- **R1 `(avg − 1)/9 × 100`:** agreed. The math in §6.1 checks out (A1 86.33, A3/A4 82.83, A10 flip 81.07).
+- **R2 Incomplete tier:** agreed. It also removes the incentive to make a repo private right after Apply. I updated ai-evaluation.md X11 and token-system.md §2.4 to point here instead of saying "ranked on confidence only".
+- **R3 tie-break chain and `next_cursor` (R7):** agreed.
+- **Endpoint `GET /api/v1/jobs/{jobId}/applicants`:** adopted. I dropped my `/api/v1/recruiter/jobs/{jobId}/applicants` (backend.md §4.4). One handler serves both roles on `/api/v1/jobs/{jobId}/…`, and each sub-path does its own role guard. I also agree with Frontend's single `lib/ranking/loadApplicantsPage()` shared by the RSC and the route, which I will own in `lib/ranking/`.
+- **Server actions:** I renamed mine to yours: `getResumeUrl` (was `getResumeDownloadUrl`), `setApplicationStatus` (replaces `shortlistApplication`/`rejectApplication`), and the new `revealContact` → `get_applicant_contact`.
+- **Bands:** I renamed my fit bands to `strong/good/moderate/limited` with the same 85/70/50 thresholds (ai-evaluation.md §2.5). `lib/ranking/bands.ts` is the single source of truth.
+- **`failure_code`:** ai-evaluation.md now uses your column names `failure_code`, `attempt_count` and `files_analyzed`, and adds a CHECK with the final list (ai-evaluation.md §6):
+  - **applicant-caused:** `not_found_or_private`, `too_large`, `too_many_files`, `archive_too_large`, `empty`, `no_reviewable_code`;
+  - **system-caused:** `timeout`, `llm_failed`, `integrity`, `github_unavailable`.
+  This answers Frontend's request in point 2. System-caused codes get the copy "We're retrying the review".
+- **Bias request (§2.10):** already covered. ai-evaluation.md §2.2 redacts name, email, phone, URLs and addresses before the LLM call, and the system prompt forbids using protected attributes and school prestige.
+
+**Answers to Frontend:**
+- **Point 4:** agreed. `revealContact` maps "not shortlisted" to `CONFLICT {reason:'not_shortlisted'}`. Data: please raise HINT `CONFLICT` in `get_applicant_contact` for that case, and keep `FORBIDDEN` for non-members.
+- **Point 7, emails:**
+  - Every status change emits `application/status.changed`. `notify-application-status` waits 10 min, re-reads the status, and is cancelled by a newer change.
+  - `→ shortlisted` sends `application-shortlisted`, including after a reconsidered rejection. If the rejection is under 10 min old, its email is cancelled and never sent.
+  - `→ rejected` sends `application-rejected`.
+  - `shortlisted → submitted` sends **nothing**.
+- **Point 5:** agreed. Text-first viewer, attachment-only downloads until AV scanning is added (backend.md B5). The detail read includes `resume.textContent`.
+
+**Requests / issues:**
+1. **Add `github.flags` to `RankedApplicant`:** `{injectionSuspected, insufficientCode, likelyTemplateOrFork}` from `repo_evaluations.flags` (ai-evaluation.md A7, recruiter-only, neutral copy). List-level badge only. Signals and evidence stay in the detail read.
+2. **RLS for `security_invoker`:** the view joins `profiles`, `applicant_profiles` and `fit_evaluations` as the recruiter. Please confirm data.md has SELECT policies that let verified company members read `full_name`/`avatar_url` and `applicant_profiles.headline` of applicants **to their jobs only**, plus the `fit_evaluations` rows linked from those applications. Otherwise names and scores come back null silently. Please add a pgTAP assertion: as an Acme recruiter, `applicant_name is not null` for A1.
+3. **Immutability vs. sanity re-run:** `guard_terminal_evaluation` blocks updates to `succeeded` rows. My repo sanity re-run happens **before** the row is marked succeeded, and the cross-application review cache inserts **new** rows, so we are compatible. Admin re-runs (`adminRetryEvaluation`) apply only to `failed` rows.
+4. **Sweeper owner:** §1.2 and §2.3 refer to "the pg_cron sweeper". I proposed an Inngest cron `sweep-stuck-work` instead (backend.md B3). This is open with the Lead and only affects the wording here.
+5. **Rate limit:** `GET /api/v1/jobs/{jobId}/applicants` uses the `recruiter.read` policy, 120/min per user (backend.md §2.6).
+
 ## Resolution

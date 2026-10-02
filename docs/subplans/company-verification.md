@@ -282,5 +282,31 @@ Everything here is form-driven UI, so it uses **server actions** (MASTER_PLAN §
 ## Review notes
 <!-- Data, Lead: add comments here -->
 
+### Data review
+_Reviewer: Data. Context: [`sections/data.md`](../sections/data.md) §3.4, §4, §6, §7._
+
+**Agree (and data.md updated to match):**
+- NEW tables `work_email_verifications` and `blocked_email_domains`, with RLS as you describe: no client access to verifications; `blocked_email_domains` readable by `authenticated` and writable by admins. Added to data.md §3.4.
+- C4: `verified_via` gains **`company_admin`**.
+- The three new `audit_log` actions `company.domain_added`, `company.domain_removed` and `email_domain.blocked` were added to the CHECK list. Keeping free-text reasons on the row, not in audit metadata, matches data.md §3.9.
+- `is_company_member` requires **both** a verified membership **and** a verified company. data.md §4.1 is updated. This also makes every recruiter policy (applications, repo evaluations, resumes) fail closed on company suspension, which is what §2.5 needs.
+- `companies.name_normalized` is **not unique** (two real "Acme"s). data.md previously had a unique index among verified companies, which would block an admin approving a genuine second Acme. It is replaced by a plain btree index.
+- Column additions on `companies` (`review_reason`, `rejected_reason`, `reviewed_by`, `reviewed_at`), `company_domains` (`verified_by`; method list `email_link|admin|dns_txt`, which replaces data.md's `email_otp`), and `recruiter_memberships` (`work_email`, `work_email_verified_at`, `evidence`, `approved_by`, `removed_at`, `removed_by`).
+- §2.4: pending recruiters may create and edit **draft** jobs, and publishing requires verification. data.md's job policies are changed: insert/update/select use `is_company_member(company_id, false)` (any non-rejected membership), and the publish check lives in the `guard_job_update` trigger, plus a matching check on INSERT with `status = 'open'`. The applicant job feed also requires a verified company.
+- The `company-logos` bucket was added to data.md §6: public read, PNG/JPEG/WebP ≤ 1 MB, path `{company_id}/logo.{ext}`, writes allowed for company admins or the creator of a pending company.
+
+**Issues / requested changes:**
+1. **`citext` is not an installed extension** in data.md. Use `text` with `check (email = lower(email))` and lowercase in the server action. data.md does this for `work_email` and `work_email_verifications.email`. Simpler than adding an extension for two columns.
+2. **`is_company_member` signature:** you list `(p_company_id, p_require_admin bool default false)`; data.md has `(p_company_id, p_require_verified bool default true)`. Keep data.md's (the `false` form is what pending recruiters need for drafts) and add a separate **`is_company_admin(p_company_id)`** for the admin-only RPCs. Please update the §3 table.
+3. **Relaxed CHECKs:** data.md had `(status = 'verified') = (verified_at is not null)` on `companies` and `recruiter_memberships`. With suspension/removal (verified → rejected, keeping `verified_at` for history), that would fail. It is now one-directional: `status <> 'verified' or verified_at is not null`. Your RPCs need not clear `verified_at`.
+4. **Company profile edits should be RPC-only.** `updateCompanyProfile` re-queues review when a verified company's name changes, which is an invariant. data.md drops the client UPDATE grant on `companies` and expects an RPC `update_company_profile(p_company_id, p_name, p_website, p_logo_path)` (SECURITY DEFINER, `is_company_admin` or creator-of-pending check). Please add it to the §3 RPC table.
+5. **Domain removal should delete the row**, not set it to `rejected`. `company_domains.domain` is globally unique, so a rejected row would block the domain forever, e.g. for a legitimate re-claim after a squatted claim is rejected. `admin_remove_company_domain` should DELETE and log `company.domain_removed` (with the domain in metadata; it is not PII).
+6. **Admin pages using the service-role client:** prefer the **user-scoped client + `is_admin()` RLS**. data.md gives admins SELECT/UPDATE policies on companies, domains and memberships, and `is_admin()` now requires `aal2`. The service role bypasses everything and makes "who did this" depend on app code. Service role only for cross-table cascades inside RPCs.
+7. **`evidence` jsonb** (recruiter's LinkedIn URL and note) is readable by every verified colleague via the membership SELECT policy. That is acceptable for MVP, since company admins need it, but note it in the onboarding copy ("visible to admins of {company}").
+8. **`blocked_email_domains` seed** must live in a **migration** (it is needed in production), not in `seed.sql` (dev only). A ~4k-row `insert … on conflict do nothing` migration is fine.
+9. **Retention:** consumed or expired `work_email_verifications` are deleted after 30 days (matches backend.md `purge-expired-data`). Pending companies with no confirmed email after 7 days are deleted. Their draft jobs cascade, and `applications.job_id RESTRICT` cannot fire because unverified companies cannot publish. Both were added to data.md §7.4.
+10. **Last-company-admin rule:** enforced in the RPCs. pgTAP covers `remove_membership`, `set_company_admin` and self-leave. No trigger needed.
+11. **Indexes added:** `work_email_verifications(membership_id)`, `(profile_id, created_at desc)`, partial `(expires_at) where consumed_at is null` for the purge, and `recruiter_memberships(company_id) where is_company_admin`.
+
 ## Resolution
 <!-- Lead -->

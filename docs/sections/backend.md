@@ -261,7 +261,7 @@ All emails are rendered with React Email (`emails/*.tsx`) and sent through the `
 | `membership-request` | company admins | `membership/join.requested` | Approve link |
 | `membership-decided` | requester | approve / reject | |
 | `application-received` | applicant | `application/submitted` | Job title, tokens spent, balance. No scores |
-| `application-shortlisted` / `application-rejected` | applicant | `notify-application-status` (10 min delay) | Neutral, kind tone. Never includes scores or ratings |
+| `application-shortlisted` / `application-rejected` | applicant | `notify-application-status` (10 min delay, cancelled by a newer change) | Neutral, kind tone. Never includes scores or ratings. `→ shortlisted` (also a reconsidered rejection) sends shortlisted; `→ rejected` sends rejected; `shortlisted → submitted` sends nothing |
 | `application-refunded` | applicant | `refund-archived-job-applications` | Amount + new balance |
 | `recruiter-daily-digest` | recruiter | weekday cron | Count of new applicants per job. Unsubscribe link (`profiles.email_digest_opt_out`) |
 | `account-deleted` | former user | `delete-account` | Sent to the address captured in the event |
@@ -354,7 +354,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | GET | `/api/v1/jobs/{jobId}/applicants?limit&cursor&sort&status&minConfidence&github&includeIncomplete&rankingVersion` | member | `rpc job_applicant_rankings_page` → `{data: RankedApplicant[], next_cursor, rankingVersion, rankingChanged, counts, job}` (**contract owned by applicant-ranking.md §2.8, §4**) | 401, 403, 404, 422, 429 |
 | RA | GET | `/api/v1/recruiter/applications/{applicationId}` | member | ai-evaluation §7 | 403, 404 |
 | SA | `getResumeUrl` | — | member | `{applicationId}` → `{url, expiresAt}` (60 s, `download` disposition, the resume snapshotted on `applications.resume_id`; logs `resume.signed_url`) | FORBIDDEN, NOT_FOUND |
-| SA | `revealContact` | — | member | `{applicationId}` → `{email}` via `rpc get_applicant_contact` (shortlisted only; `profiles.email` is not column-granted) | FORBIDDEN, NOT_FOUND |
+| SA | `revealContact` | — | member | `{applicationId}` → `{email}` via `rpc get_applicant_contact` (shortlisted only; `profiles.email` is not column-granted; logs `contact.revealed`) | FORBIDDEN (not a member), CONFLICT (`not_shortlisted`), NOT_FOUND |
 | SA | `setApplicationStatus` | — | member | `{applicationId, toStatus: 'shortlisted'\|'rejected'\|'submitted', note?}` → application. Calls Data's `set_application_status` RPC (which writes `application_events` + `audit_log`), then emits `application/status.changed` | FORBIDDEN, CONFLICT (invalid transition; `withdrawn` is terminal) |
 
 Recruiter dashboard reads (job list, counts) are RSC-only, through the user-scoped client.
