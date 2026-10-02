@@ -63,6 +63,8 @@ export function CheckFitPanel({
   applied,
   hasLinkedInImport,
   showHeading = true,
+  autoStart = false,
+  showApply = true,
 }: {
   job: ApplyJob;
   initial: FitEvaluation | null;
@@ -70,19 +72,24 @@ export function CheckFitPanel({
   applied: { applicationId: string; status: ApplicationStatus } | null;
   hasLinkedInImport: boolean;
   showHeading?: boolean;
+  /** Start the Jev compare as soon as this panel is shown. */
+  autoStart?: boolean;
+  /** Hide the apply button when the page already has a separate apply section. */
+  showApply?: boolean;
 }) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const balance = useLiveTokenBalance(initialBalance);
   const ready = initial?.status === "succeeded" && initial.confidenceScore != null;
-  const [phase, setPhase] = useState<Phase>(ready ? "result" : "idle");
+  const [phase, setPhase] = useState<Phase>(ready ? "result" : autoStart ? "pending" : "idle");
   const [evaluation, setEvaluation] = useState<FitDto | null>(ready && initial ? toDto(initial) : null);
   const [evalId, setEvalId] = useState<string | null>(null);
   const [connectionsOn, setConnectionsOn] = useState(Boolean(ready));
   const [applyOpen, setApplyOpen] = useState(false);
   const [errorText, setErrorText] = useState<string | null>(null);
-  const startedAt = useRef(0);
+  const startedAt = useRef(autoStart && !ready ? Date.now() : 0);
   const refreshed = useRef(false);
+  const autoStarted = useRef(false);
 
   const connections = useQuery({
     queryKey: ["job-connections", job.id],
@@ -148,24 +155,26 @@ export function CheckFitPanel({
     }
   }, [poll.isError, phase]);
 
-  async function start(recheck: boolean) {
+  async function start(recheck: boolean, withConnections = true) {
     setPhase("pending");
     setErrorText(null);
-    setConnectionsOn(true);
+    setConnectionsOn(withConnections);
     setEvalId(null);
     startedAt.current = Date.now();
     refreshed.current = false;
-    const connectionsPromise = queryClient
-      .fetchQuery({
-        queryKey: ["job-connections", job.id],
-        staleTime: 60_000,
-        queryFn: async () => {
-          const response = await fetch(`/api/v1/jobs/${job.id}/connections`, { cache: "no-store" });
-          if (!response.ok) throw new Error("connections");
-          return (await response.json()) as { data: ConnectionPerson[]; total: number };
-        },
-      })
-      .catch(() => null);
+    const connectionsPromise = withConnections
+      ? queryClient
+          .fetchQuery({
+            queryKey: ["job-connections", job.id],
+            staleTime: 60_000,
+            queryFn: async () => {
+              const response = await fetch(`/api/v1/jobs/${job.id}/connections`, { cache: "no-store" });
+              if (!response.ok) throw new Error("connections");
+              return (await response.json()) as { data: ConnectionPerson[]; total: number };
+            },
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
 
     try {
       const [response] = await Promise.all([
@@ -199,6 +208,12 @@ export function CheckFitPanel({
       setErrorText("Couldn't check fit");
     }
   }
+
+  useEffect(() => {
+    if (!autoStart || ready || autoStarted.current) return;
+    autoStarted.current = true;
+    void start(false, false);
+  }, [autoStart, ready]);
 
   const blocked = applied
     ? null
@@ -300,21 +315,22 @@ export function CheckFitPanel({
           <p className="text-small text-muted-foreground">
             AI estimate based on your resume and LinkedIn export. Recruiters see their own evaluation.
           </p>
-          {applied ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <StatusChip status={applied.status} audience="applicant" />
-              <Button variant="link" size="sm" asChild>
-                <Link href={`/applications/${applied.applicationId}`}>View application</Link>
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              <Button type="button" onClick={() => setApplyOpen(true)} disabled={Boolean(blocked)}>
-                Apply · {formatCredits(job.tokenCost)}
-              </Button>
-              {blocked && <p className="text-small text-muted-foreground">{blocked}</p>}
-            </div>
-          )}
+          {showApply &&
+            (applied ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <StatusChip status={applied.status} audience="applicant" />
+                <Button variant="link" size="sm" asChild>
+                  <Link href={`/applications/${applied.applicationId}`}>View application</Link>
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Button type="button" onClick={() => setApplyOpen(true)} disabled={Boolean(blocked)}>
+                  Apply · {formatCredits(job.tokenCost)}
+                </Button>
+                {blocked && <p className="text-small text-muted-foreground">{blocked}</p>}
+              </div>
+            ))}
         </div>
       )}
 

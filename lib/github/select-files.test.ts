@@ -14,7 +14,8 @@ describe("selectReviewFiles", () => {
       { path: "tests/api.test.ts", type: "blob" },
       { path: "logo.png", type: "blob" },
     ]);
-    expect(selected[0]).toBe("README.md");
+    expect(selected[0]).toBe("tests/api.test.ts");
+    expect(selected.indexOf("src/server.ts")).toBeLessThan(selected.indexOf("README.md"));
     expect(selected).toContain(".github/workflows/ci.yml");
     expect(selected).toContain("infra/main.tf");
     expect(selected).toContain("tests/api.test.ts");

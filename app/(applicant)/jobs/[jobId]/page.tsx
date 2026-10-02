@@ -90,6 +90,8 @@ export default async function JobDetailPage({ params }: { params: Promise<{ jobI
             balance={balance}
             applied={applied}
             hasLinkedInImport={hasLinkedIn}
+            autoStart
+            showApply={false}
           />
         </section>
         <ApplyCard job={applyJob} balance={balance} applied={applied} />

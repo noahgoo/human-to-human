@@ -22,6 +22,9 @@ export const ERROR_COPY: Record<string, string> = {
   INSUFFICIENT_TOKENS: "You don't have enough credits for this job.",
   IDEMPOTENCY_KEY_REUSED: "Please try submitting again.",
   REPO_NOT_ACCESSIBLE: "We couldn't access that repository. Make sure it's public.",
+  GITHUB_UNAVAILABLE: "We couldn't reach GitHub to review that repository. Try again shortly.",
+  SERVICE_UNAVAILABLE: "Scoring is unavailable right now. Try again shortly.",
+  OPENROUTER_UNAVAILABLE: "We couldn't finish the evaluation. Try again shortly.",
   RATE_LIMITED: "You're going a bit fast. Try again shortly.",
   INTERNAL: "Something went wrong on our side.",
 };

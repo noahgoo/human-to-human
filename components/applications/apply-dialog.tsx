@@ -179,7 +179,7 @@ export function ApplyDialog({
     onError: (error, _vars, context) => {
       if (context?.prev) queryClient.setQueryData(TOKEN_BALANCE_KEY, context.prev);
       const code = (error as { code?: string }).code ?? "INTERNAL";
-      const message = errorMessage(code);
+      const message = error.message || errorMessage(code);
       if (code === "REPO_NOT_ACCESSIBLE") {
         setStep("repo");
         form.setError("githubRepoUrl", { message });
@@ -342,7 +342,13 @@ export function ApplyDialog({
               Credits reset {resetLabel} (UTC) and don&apos;t roll over.
             </p>
             <p className="text-small text-copy">
-              An AI estimate is shared with the recruiter, and a human makes every decision.
+              {pending
+                ? job.isTechnical
+                  ? "Scoring your resume, LinkedIn, and repository, then sending the evaluation to the recruiter."
+                  : "Scoring your resume and LinkedIn, then sending the evaluation to the recruiter."
+                : job.isTechnical
+                  ? "We'll score your resume, LinkedIn, and this repository, then send the evaluation to the recruiter. A human makes every decision."
+                  : "We'll score your resume and LinkedIn, then send the evaluation to the recruiter. A human makes every decision."}
             </p>
             <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
               {job.isTechnical && (
@@ -352,7 +358,7 @@ export function ApplyDialog({
               )}
               <Button type="button" onClick={submitApplication} disabled={pending} aria-busy={pending}>
                 {pending && <Loader2 className="size-4 animate-spin" aria-hidden />}
-                Spend {formatCredits(job.tokenCost)} & apply
+                {pending ? "Scoring and applying…" : `Spend ${formatCredits(job.tokenCost)} & apply`}
               </Button>
             </div>
           </div>

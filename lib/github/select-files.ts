@@ -54,11 +54,13 @@ function skip(entry: TreeEntry): boolean {
   return false;
 }
 
+const CODE = /\.(ts|tsx|js|jsx|py|go|rs|java|rb|sql)$/i;
+
 function priority(path: string): number {
   const lower = path.toLowerCase();
   const base = lower.split("/").pop() ?? lower;
-  if (base.startsWith("readme")) return 0;
-  if (lower.startsWith("docs/") || lower.includes("/adr") || base.startsWith("adr-") || base === "contributing.md") return 1;
+  if (isTest(lower, base)) return 0;
+  if (CODE.test(base)) return 1;
   if (
     lower.includes(".github/workflows/") ||
     base.startsWith("dockerfile") ||
@@ -74,7 +76,12 @@ function priority(path: string): number {
   ) {
     return 3;
   }
-  if (/(^|\/)(test|tests|__tests__|spec)\//.test(lower) || /\.(test|spec)\./.test(base) || base.startsWith("test_")) return 4;
-  if (SOURCE.test(base)) return 5;
+  if (base.startsWith("readme")) return 4;
+  if (lower.startsWith("docs/") || lower.includes("/adr") || base.startsWith("adr-") || base === "contributing.md") return 5;
+  if (SOURCE.test(base)) return 6;
   return 9;
+}
+
+function isTest(lower: string, base: string): boolean {
+  return /(^|\/)(test|tests|__tests__|spec)\//.test(lower) || /\.(test|spec)\./.test(base) || base.startsWith("test_");
 }

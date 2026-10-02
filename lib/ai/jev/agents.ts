@@ -20,6 +20,20 @@ export const FIT_CRITERIA = [
   "The evidence shows the candidate has done this work.",
 ] as const;
 
+const JEV_COMPARE_SOURCES = ["richMedia", "profile", "resume"] as const;
+
+/** Agents and sources for a fit check that uses only resume, profile, and rich media. */
+export function jevCompareCalls(evidence: Record<(typeof JEV_COMPARE_SOURCES)[number], string>) {
+  return FIT_AGENTS.flatMap((agent) =>
+    AGENT_SOURCES[agent]
+      .filter((source): source is (typeof JEV_COMPARE_SOURCES)[number] =>
+        (JEV_COMPARE_SOURCES as readonly string[]).includes(source),
+      )
+      .map((source) => ({ agent, source, text: evidence[source] }))
+      .filter((call) => call.text.trim().length > 0),
+  );
+}
+
 export const AGENT_INSTRUCTIONS: Record<FitAgent, string> = {
   softwareEngineer:
     "You are a software engineer. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",

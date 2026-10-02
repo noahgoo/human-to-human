@@ -1,6 +1,11 @@
+import { JevError } from "@/lib/ai/jev/client";
+import { CsvParseError } from "@/lib/ai/jev/evaluate";
 import { errorMessage } from "@/lib/copy";
-import { createPendingFit, freshSucceededFit, toFitDto } from "@/lib/data/fit";
+import { runJevFit, toFitDto } from "@/lib/data/fit";
 import { getJobForApplicant, requireApplicant } from "@/lib/data/jobs";
+
+export const runtime = "nodejs";
+export const maxDuration = 60;
 
 function apiError(status: number, code: string, message?: string) {
   return Response.json({ error: { code, message: message ?? errorMessage(code) } }, { status });
@@ -22,11 +27,18 @@ export async function POST(request: Request, context: { params: Promise<{ jobId:
     recheck = false;
   }
 
-  if (!recheck) {
-    const fresh = freshSucceededFit(jobId, auth.session.userId);
-    if (fresh) return Response.json(toFitDto(fresh), { status: 200, headers: { "Cache-Control": "no-store" } });
+  try {
+    const fit = await runJevFit(jobId, auth.session.userId, recheck);
+    return Response.json(toFitDto(fit), { status: 200, headers: { "Cache-Control": "no-store" } });
+  } catch (err) {
+    if (err instanceof Error && err.message === "MISSING_EVIDENCE") {
+      return apiError(422, "VALIDATION_FAILED", "A resume, LinkedIn profile, and rich media export are required.");
+    }
+    if (err instanceof CsvParseError) return apiError(422, "VALIDATION_FAILED", err.message);
+    if (err instanceof JevError && err.code === "missing_key") {
+      return apiError(503, "SERVICE_UNAVAILABLE", "OpenRouter is not configured.");
+    }
+    if (err instanceof JevError) return apiError(502, "OPENROUTER_UNAVAILABLE", "Jev could not score this candidate.");
+    return apiError(500, "INTERNAL", "Could not check fit.");
   }
-
-  const fit = createPendingFit(jobId, auth.session.userId);
-  return Response.json({ id: fit.id }, { status: 202, headers: { "Cache-Control": "no-store" } });
 }

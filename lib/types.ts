@@ -58,6 +58,8 @@ export interface FitEvaluation {
   band: FitBand | null;
   explanation: string | null;
   requirements: FitRequirement[];
+  /** Saved Jev scores for rich media, profile, and resume. Not recomputed on read. */
+  sourceScores?: Partial<Record<"richMedia" | "profile" | "resume", number>>;
   createdAt: string;
 }
 
@@ -110,6 +112,10 @@ export interface LinkedInImportInfo {
   status: ParseStatus;
   filesPresent: Array<"Profile" | "Positions" | "Skills" | "Education" | "Connections">;
   counts: { connections: number; companies: number; positions: number; skills: number; education: number };
+  /** LinkedIn Profile.csv, used by the Jev fit compare. */
+  profileCsv?: string;
+  /** LinkedIn Rich_Media.csv, used by the Jev fit compare. */
+  richMediaCsv?: string;
 }
 
 export interface ApplicantProfile {

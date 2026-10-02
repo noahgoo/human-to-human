@@ -18,6 +18,15 @@ export const DEMO_APPLICANT_ID = "user-applicant-demo";
 export const DEMO_RECRUITER_ID = "user-recruiter-demo";
 export const DEMO_RECRUITER_COMPANY_ID = "co-lumen";
 
+const DEMO_PROFILE_CSV = `First Name,Last Name,Headline,Summary,Industry
+Jordan,Lee,Senior Software Engineer · Distributed systems,"Led migration of an ingestion pipeline to Go, cutting p99 latency 40%. Owned the Kubernetes platform for 60 services. Previously built React dashboards and an internal design system.",Software
+`;
+
+const DEMO_RICH_MEDIA_CSV = `Date/Time,Media Description,Media Link
+"March 1, 2024","Led migration of an ingestion pipeline to Go, cutting p99 latency 40%. Owned Kubernetes for 60 services.",https://example.test/pipeline
+"June 1, 2020","Built React dashboards and an internal design system.",https://example.test/dashboards
+`;
+
 export interface MockDb {
   companies: Company[];
   jobs: Job[];
@@ -100,6 +109,8 @@ function seed(): MockDb {
       status: "succeeded",
       filesPresent: ["Profile", "Positions", "Skills", "Education", "Connections"],
       counts: { connections: 1428, companies: 342, positions: 4, skills: 24, education: 2 },
+      profileCsv: DEMO_PROFILE_CSV,
+      richMediaCsv: DEMO_RICH_MEDIA_CSV,
     },
   };
 
@@ -224,7 +235,7 @@ function seed(): MockDb {
   applications.push(
     {
       id: "app-demo-1", jobId: "job-cobalt-backend", applicantId: DEMO_APPLICANT_ID, status: "submitted", tokenCost: 2,
-      githubRepoUrl: "https://github.com/jordanlee/queue-service", submittedAt: hoursAgo(20), updatedAt: hoursAgo(20), fitEvaluationId: "fit-demo-1",
+      githubRepoUrl: "https://github.com/jordanlee/queue-service", submittedAt: hoursAgo(20), updatedAt: hoursAgo(20), fitEvaluationId: null,
       events: [{ fromStatus: null, toStatus: "submitted", at: hoursAgo(20) }],
     },
     {
@@ -233,17 +244,6 @@ function seed(): MockDb {
       events: [{ fromStatus: null, toStatus: "submitted", at: daysAgo(6) }, { fromStatus: "submitted", toStatus: "shortlisted", at: daysAgo(2) }],
     },
   );
-  fitEvaluations.push({
-    id: "fit-demo-1", jobId: "job-cobalt-backend", applicantId: DEMO_APPLICANT_ID, status: "succeeded", confidenceScore: 82, band: "good",
-    explanation: "Strong backend and Postgres experience. Event-driven systems are evidenced by the ingestion pipeline work. No direct payments experience.",
-    requirements: [
-      { requirement: "4+ years backend engineering", met: "yes", evidence: "Acme Cloud, Brightline" },
-      { requirement: "Postgres, event-driven systems", met: "yes", evidence: "Ingestion pipeline migration" },
-      { requirement: "Payments or fintech experience a plus", met: "no", evidence: null },
-    ],
-    createdAt: hoursAgo(22),
-  });
-
   const connections: Connection[] = [
     { id: "c1", ownerId: DEMO_APPLICANT_ID, firstName: "Sarah", lastName: "Lin", position: "Engineering Manager", companyName: "Lumen Labs" },
     { id: "c2", ownerId: DEMO_APPLICANT_ID, firstName: "Alex", lastName: "Moreno", position: "Staff Engineer", companyName: "Lumen Labs" },
@@ -272,7 +272,7 @@ function seed(): MockDb {
 }
 
 // Bump when the MockDb shape or seed changes so a running dev server reseeds.
-const SEED_VERSION = 2;
+const SEED_VERSION = 4;
 const g = globalThis as unknown as { __npMockDb?: MockDb; __npMockDbVersion?: number };
 
 export function db(): MockDb {

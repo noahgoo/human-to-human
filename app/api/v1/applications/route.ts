@@ -2,6 +2,9 @@ import { errorMessage } from "@/lib/copy";
 import { createApplication } from "@/lib/data/apply";
 import { requireApplicant } from "@/lib/data/jobs";
 
+export const runtime = "nodejs";
+export const maxDuration = 120;
+
 function apiError(status: number, code: string, message?: string) {
   return Response.json({ error: { code, message: message ?? errorMessage(code) } }, { status });
 }

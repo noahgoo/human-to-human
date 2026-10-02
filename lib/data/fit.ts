@@ -1,4 +1,7 @@
 import "server-only";
+import { compareResumeProfileRichMedia } from "@/lib/ai/jev/evaluate";
+import type { FitPreview } from "@/lib/ai/jev/score";
+import type { FitSource } from "@/lib/ai/jev/agents";
 import { bandFor } from "@/lib/ranking/bands";
 import { db, newId } from "@/lib/mock/db";
 import type { FitEvaluation, FitRequirement, Job } from "@/lib/types";
@@ -88,6 +91,128 @@ export function freshSucceededFit(jobId: string, applicantId: string): FitEvalua
         Date.parse(f.createdAt) >= cutoff,
     )
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0];
+}
+
+const SOURCE_LABEL: Record<FitSource, string> = {
+  profile: "LinkedIn profile",
+  richMedia: "LinkedIn rich media",
+  resume: "Resume",
+  github: "GitHub",
+};
+
+function metForScore(score: number): FitRequirement["met"] {
+  if (score >= 70) return "yes";
+  if (score >= 50) return "partial";
+  return "no";
+}
+
+export function fitWriteup(
+  preview: FitPreview,
+  job: Job,
+  includesGithub: boolean,
+): Pick<FitEvaluation, "explanation" | "requirements" | "sourceScores"> {
+  const written = resultFromPreview(preview, job);
+  if (!includesGithub) return written;
+  const company = db().companies.find((item) => item.id === job.companyId);
+  return {
+    requirements: written.requirements,
+    sourceScores: written.sourceScores,
+    explanation: `Jev compared this candidate's resume, LinkedIn profile, rich media, and submitted GitHub repository with the ${job.title} role at ${company?.name ?? "the company"}.`,
+  };
+}
+
+function averagedBySource(preview: FitPreview): Partial<Record<FitSource, number>> {
+  const bySource = new Map<FitSource, number[]>();
+  for (const agent of Object.values(preview.agents)) {
+    if (!agent) continue;
+    for (const [source, scored] of Object.entries(agent.sources) as Array<[FitSource, { score: number }]>) {
+      const scores = bySource.get(source) ?? [];
+      scores.push(scored.score);
+      bySource.set(source, scores);
+    }
+  }
+  const averaged: Partial<Record<FitSource, number>> = {};
+  for (const [source, scores] of bySource) {
+    averaged[source] = Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length);
+  }
+  return averaged;
+}
+
+function resultFromPreview(
+  preview: FitPreview,
+  job: Job,
+): Pick<FitEvaluation, "explanation" | "requirements" | "sourceScores"> {
+  const company = db().companies.find((item) => item.id === job.companyId);
+  const averaged = averagedBySource(preview);
+  const requirements: FitRequirement[] = (Object.entries(averaged) as Array<[FitSource, number]>).map(
+    ([source, score]) => ({
+      requirement: SOURCE_LABEL[source],
+      met: metForScore(score),
+      evidence: `Jev score ${score}`,
+    }),
+  );
+  return {
+    explanation: `Jev compared your resume, LinkedIn profile, and rich media with the ${job.title} role at ${company?.name ?? "the company"}.`,
+    requirements,
+    sourceScores: {
+      richMedia: averaged.richMedia,
+      profile: averaged.profile,
+      resume: averaged.resume,
+    },
+  };
+}
+
+const inflightFits = new Map<string, Promise<FitEvaluation>>();
+
+/** Runs the resume / profile / rich-media Jev compare, or returns a fit from the last 24 hours. */
+export async function runJevFit(jobId: string, applicantId: string, recheck: boolean): Promise<FitEvaluation> {
+  if (!recheck) {
+    const fresh = freshSucceededFit(jobId, applicantId);
+    if (fresh) return fresh;
+  }
+  const key = `${applicantId}:${jobId}:${recheck ? "recheck" : "check"}`;
+  const existing = inflightFits.get(key);
+  if (existing) return existing;
+  const promise = scoreAndStore(jobId, applicantId).finally(() => {
+    if (inflightFits.get(key) === promise) inflightFits.delete(key);
+  });
+  inflightFits.set(key, promise);
+  return promise;
+}
+
+async function scoreAndStore(jobId: string, applicantId: string): Promise<FitEvaluation> {
+  const store = db();
+  const job = store.jobs.find((item) => item.id === jobId);
+  const applicant = store.applicants.find((item) => item.id === applicantId);
+  if (!job || !applicant) throw new Error("NOT_FOUND");
+  const profileCsv = applicant.linkedin?.profileCsv;
+  const richMediaCsv = applicant.linkedin?.richMediaCsv;
+  const resumeText = applicant.resume?.textContent ?? undefined;
+  if (!profileCsv || !richMediaCsv || !resumeText) {
+    throw new Error("MISSING_EVIDENCE");
+  }
+  const preview = await compareResumeProfileRichMedia({
+    jobTitle: job.title,
+    jobRequirements: job.requirements,
+    profileCsv,
+    richMediaCsv,
+    resumeText,
+  });
+  const written = resultFromPreview(preview, job);
+  const fit: FitEvaluation = {
+    id: newId("fit"),
+    jobId,
+    applicantId,
+    status: "succeeded",
+    confidenceScore: preview.confidenceScore,
+    band: preview.band,
+    explanation: written.explanation,
+    requirements: written.requirements,
+    sourceScores: written.sourceScores,
+    createdAt: new Date().toISOString(),
+  };
+  store.fitEvaluations.push(fit);
+  return fit;
 }
 
 export function createPendingFit(jobId: string, applicantId: string): FitEvaluation {

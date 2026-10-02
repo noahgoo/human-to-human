@@ -3,12 +3,19 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/auth/session";
 import { formatCredits, WORK_MODE_LABEL } from "@/lib/copy";
-import { getMyApplication } from "@/lib/data/applications";
+import { getMyApplication, type SavedJevScores } from "@/lib/data/applications";
 import type { ApplicationStatus } from "@/lib/types";
 import { StatusChip } from "@/components/shared/chips";
 import { CompanyLogo } from "@/components/shared/misc";
 import { ApplicationTimeline } from "@/components/applications/application-timeline";
 import { WithdrawDialog } from "@/components/applications/withdraw-dialog";
+import { RepoScoreCard } from "@/components/recruiter/repo-score-card";
+
+const JEV_ROWS: Array<{ key: keyof Omit<SavedJevScores, "average">; label: string }> = [
+  { key: "richMedia", label: "LinkedIn rich media" },
+  { key: "profile", label: "LinkedIn profile" },
+  { key: "resume", label: "Resume" },
+];
 
 const STATUS_COPY: Record<ApplicationStatus, string> = {
   submitted: "The recruiter will review your application.",
@@ -63,24 +70,42 @@ export default async function ApplicationDetailPage({
       <p className="text-body text-foreground">{STATUS_COPY[application.status]}</p>
 
       <section>
+        <h2 className="mb-4 text-h3">Jev scores</h2>
+        <ul className="divide-y divide-border rounded-xl border border-border bg-card">
+          {JEV_ROWS.map((row) => (
+            <li key={row.key} className="flex items-center justify-between gap-4 px-4 py-3">
+              <span className="text-body text-foreground">{row.label}</span>
+              <span className="tabular-nums text-body text-foreground">{scoreText(application.jev[row.key])}</span>
+            </li>
+          ))}
+          <li className="flex items-center justify-between gap-4 px-4 py-3">
+            <span className="text-body font-medium text-foreground">Average</span>
+            <span className="tabular-nums text-body font-medium text-foreground">{scoreText(application.jev.average)}</span>
+          </li>
+        </ul>
+      </section>
+
+      {application.repo && (
+        <section>
+          <h2 className="mb-4 text-h3">GitHub repository</h2>
+          <RepoScoreCard repo={application.repo} variant="full" />
+        </section>
+      )}
+
+      <section>
         <h2 className="mb-4 text-h3">Timeline</h2>
         <ApplicationTimeline events={application.events} />
       </section>
 
       <p className="text-body text-foreground">Spent {formatCredits(application.tokenCost)}</p>
 
-      {application.isTechnical && (
-        <div>
-          <p className="text-small text-copy">Repository submitted for review</p>
-          {application.githubRepoUrl && (
-            <p className="mt-1 font-mono text-code break-all text-foreground">{application.githubRepoUrl}</p>
-          )}
-        </div>
-      )}
-
       {canWithdraw && (
         <WithdrawDialog applicationId={application.id} jobTitle={application.jobTitle} credits={application.tokenCost} />
       )}
     </div>
   );
+}
+
+function scoreText(score: number | null) {
+  return score == null ? "—" : String(Math.round(score));
 }

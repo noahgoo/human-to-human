@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { jevCompareCalls } from "@/lib/ai/jev/agents";
 import { aggregateFit, confidenceFromDistribution, distributionFromAnswer } from "@/lib/ai/jev/score";
 
 describe("confidenceFromDistribution", () => {
@@ -14,6 +15,27 @@ describe("confidenceFromDistribution", () => {
     expect(distributionFromAnswer({ probabilities: { "0": 0, "4": 2 } })).toEqual([0, 0, 0, 0, 1]);
     expect(confidenceFromDistribution(distributionFromAnswer({ probabilities: { "0": 0, "4": 1 } }))).toBe(100);
     expect(confidenceFromDistribution([2, 0, 0, 0, 2])).toBe(50);
+  });
+});
+
+describe("jevCompareCalls", () => {
+  it("scores resume, profile, and rich media only", () => {
+    const calls = jevCompareCalls({
+      richMedia: "shipped a billing service",
+      profile: "backend engineer",
+      resume: "Go and PostgreSQL",
+    });
+    expect(calls.map((call) => call.source).sort()).toEqual([
+      "profile",
+      "profile",
+      "resume",
+      "richMedia",
+      "richMedia",
+    ]);
+    expect(calls.every((call) => call.source === "profile" || call.source === "richMedia" || call.source === "resume")).toBe(
+      true,
+    );
+    expect(calls.filter((call) => call.source === "resume").map((call) => call.agent)).toEqual(["resumeAnalyst"]);
   });
 });
 
