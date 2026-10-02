@@ -15,7 +15,7 @@
 | A2 | Cache key | `input_hash = sha256(job_id ‖ resume_id ‖ linkedin_import_id ‖ job.updated_at ‖ FIT_PROMPT_VERSION ‖ FIT_MODEL_ID)`. This is the MASTER_PLAN formula **plus `job_id` and the model id**, so a model swap or fallback invalidates the cache. A fallback-model result is cached under the **primary** model's key, because we do not want to re-run it. `prompt_version` bumps whenever the system prompt, schema or scoring weights change. |
 | A3 | Can the applicant see the sub-scores and requirement breakdown? | **Yes.** It is their own data and helps them. The UI shows the score, band, explanation and the requirement checklist (met/partial/missing). Recruiters see the same snapshot. |
 | A4 | Pin the repo commit at Apply or at review time? | **At review time** (the first step of `evaluate-repo`), so the canonical `apply_to_job` signature stays unchanged. The gap is minutes. `commit_sha` is stored and shown to recruiters with a link. |
-| A5 | Can the applicant see the repo-review **status** (not the ratings)? | **Yes:** `my_applications` exposes `repo_review_status` (`pending` / `succeeded` / `failed`, plus a coarse `failure_reason` such as `repo_not_accessible`). **Never** the scores or rationale. **Data to add the column to the view.** |
+| A5 | Can the applicant see the repo-review **status** (not the ratings)? | **Yes:** `my_applications` exposes `repo_review_status` (`pending` / `succeeded` / `failed`, plus the coarse `failure_code`, e.g. `not_found_or_private`). **Never** the scores or rationale. **Data to add the column to the view.** |
 | A6 | Should `resume_parse` use an LLM? | **No in MVP.** Text extraction is deterministic (unpdf/mammoth). The `ai_usage.task` value `resume_parse` stays reserved. |
 | A7 | Should we tell recruiters that an injection attempt was detected? | **Yes**, as a neutral flag: "This submission contained text addressed to the AI reviewer". The score is still computed. The flag is never shown to the applicant. |
 
@@ -177,7 +177,7 @@ export const FitLlmOutput = z.object({
 - `flags.insufficient_candidate_data` (e.g. empty resume and no positions) → cap **30** and an explanation override: "We couldn't find enough detail in your profile or resume to judge this match."
 - `confidence_score = round(clamp(raw, 0, 100))`.
 
-**Bands** (UI label and colour): 85–100 *Strong match* (emerald) · 70–84 *Good match* · 50–69 *Partial match* (amber) · 0–49 *Weak match*.
+**Bands** (UI label and colour): 85–100 *Strong match* (emerald) · 70–84 *Good match* · 50–69 *Moderate match* (amber) · 0–49 *Limited match*. Names and thresholds match applicant-ranking.md §2.6 (`strong`/`good`/`moderate`/`limited`, single source `lib/ranking/bands.ts`).
 
 **Sanity checks** (run after scoring, and logged as `ai_usage.status = 'anomaly'` if triggered):
 - every requirement `met` but there are zero evidence strings → downgrade those requirements to `partial`;
@@ -377,7 +377,7 @@ export const RepoReviewOutput = z.object({
 
 ### 3.9 Visibility
 - Ratings, rationale, flags and signals are **recruiter-only** (verified members of the job's company). `repo_evaluations` has no applicant SELECT policy (MASTER_PLAN §4).
-- API responses to applicants are built from `my_applications` (`repo_review_status` + coarse `failure_reason` only, A5).
+- API responses to applicants are built from `my_applications` (`repo_review_status` + coarse `failure_code` only, A5).
 - pgTAP asserts that an applicant JWT selecting `repo_evaluations` returns 0 rows. An integration test asserts that the `GET /api/v1/applications/{id}` JSON contains none of the keys `securityScore`, `organizationScore`, `performanceScore`, `testingScore` or `rationale`.
 
 ---
@@ -466,38 +466,31 @@ Matches set `flags.injection_signals[]` (pattern ids + location). They **do not*
 ## 6. Data model changes (for Data to implement)
 
 ```sql
--- fit_evaluations: additions
+-- fit_evaluations: additions beyond data.md (which already has resume_id, linkedin_import_id, error,
+-- started_at, completed_at and the succeeded cache index)
 alter table fit_evaluations
   add column sub_scores       jsonb,     -- {skills, experience, seniority, education|null, weights_used, caps_applied:[...]}
   add column requirements     jsonb,     -- [{text, importance, status, evidence}]
-  add column band             text check (band in ('strong','good','partial','weak')),
+  add column band             text check (band in ('strong','good','moderate','limited')),
   add column flags            jsonb,     -- {injection_suspected, insufficient_candidate_data, non_english, injection_signals:[...]}
-  add column resume_id        uuid references resumes(id) on delete set null,
-  add column linkedin_import_id uuid references linkedin_imports(id) on delete set null,
   add column job_updated_at   timestamptz not null,
-  add column error            text,      -- internal code only, never raw provider text
-  add column attempts         smallint not null default 0,
-  add column completed_at     timestamptz;
+  add column attempt_count    smallint not null default 0;   -- same name as repo_evaluations.attempt_count
 create unique index fit_evaluations_inflight_dedupe
   on fit_evaluations (applicant_id, input_hash) where status in ('pending','running');
-create index fit_evaluations_cache_lookup
-  on fit_evaluations (applicant_id, input_hash, created_at desc) where status = 'succeeded';
 -- RLS: applicant selects own rows; verified company members select rows linked from applications to their jobs.
 
--- repo_evaluations: additions
+-- repo_evaluations: additions beyond data.md (which already has overall_score (generated), files_analyzed,
+-- bytes_analyzed, failure_code, error, attempt_count, started_at, completed_at). Data's names are used throughout.
 alter table repo_evaluations
   add column repo_meta        jsonb,     -- {full_name, default_branch, stars, forks, is_fork, language, size_kb, pushed_at, license}
   add column signals          jsonb,     -- deterministic signals (§3.4); no secret values
   add column files_considered int,
-  add column files_reviewed   int,
   add column tokens_sent      int,
   add column strategy         text check (strategy in ('single','map_reduce')),
   add column flags            jsonb,     -- {injection_suspected, injection_paths, insufficient_code, likely_template_or_fork}
-  add column failure_reason   text check (failure_reason in ('not_found_or_private','too_large','too_many_files',
-                                  'archive_too_large','empty','no_reviewable_code','timeout','llm_failed','integrity','github_unavailable')),
-  add column attempts         smallint not null default 0,
-  add column started_at       timestamptz,
-  add column completed_at     timestamptz;
+  add constraint repo_evaluations_failure_code check (failure_code in ('not_found_or_private','too_large','too_many_files',
+                                  'archive_too_large','empty','no_reviewable_code','timeout','llm_failed','integrity','github_unavailable'));
+-- files_analyzed = files sent to the model (called "files reviewed" in prose).
 -- canonical CHECKs: *_score between 1 and 10, null unless status='succeeded'.
 
 -- ai_usage: full spec (canonical columns + additions)
@@ -538,7 +531,7 @@ create index ai_usage_subject on ai_usage (subject_id);
 |---|---|---|---|---|---|
 | POST | `/api/v1/jobs/{jobId}/fit-evaluations` | applicant, onboarded | `{}` (inputs are server-resolved) | `200 {id, status:'succeeded', cached:true, confidenceScore, band, explanation, requirements, subScores, createdAt}` or `202 {id, status:'pending'}` | 401, 403 (`not_onboarded`), 404 (job not open/visible), 409 `CONFLICT {reason:'resume_not_ready'}`, 429 `RATE_LIMITED {retryAfter, reason?}` |
 | GET | `/api/v1/fit-evaluations/{id}` | owner applicant | — | `200 {id, jobId, status, confidenceScore?, band?, explanation?, requirements?, subScores?, error?: 'evaluation_failed', createdAt, completedAt}`, with `Cache-Control: no-store` | 401, 404 (not owner) |
-| GET | `/api/v1/jobs/{jobId}/connections` | applicant | — | `200 {data:[{firstName, lastName, position, connectedOn}], total}` (Data's lookup; max 20) | 401, 403, 404 |
+| GET | `/api/v1/jobs/{jobId}/connections` | applicant | — | `200 {data:[{id, firstName, lastName, position, companyName, connectedOn, matchKind}], exactCount, possibleCount, asOf}` (contract owned by linkedin-ingestion.md §4; Data's `connections_at_company(job.company_id)`, user-scoped client) | 401, 403, 404 |
 | POST | `/api/v1/repos/validate` | applicant | `{url}` | `200 {canonicalUrl, fullName, defaultBranch, sizeKb, language}` | 422 `REPO_NOT_ACCESSIBLE {reason}`, 429 (20/h) |
 | GET | `/api/v1/recruiter/applications/{applicationId}` | verified company member of the job's company | — | `200 {application, applicant:{name, headline}, fit:{score, band, explanation, requirements, subScores}, repo?:{status, commitSha, repoUrl, scores:{security, organization, performance, testing}, rationale, flags, signals:{testFileCount, hasCi, …}, failureReason?}, rankScore}` | 401, 403, 404 |
 | server action | `adminRetryEvaluation({kind:'fit'\|'repo', id})` | admin (aal2) | — | `{status:'pending'}`. Resets attempts and emits the event. Audited in `audit_log` (`admin.repo_eval_rerun`) | FORBIDDEN, CONFLICT (still running) |
@@ -561,7 +554,7 @@ Polling: the client polls `GET /fit-evaluations/{id}` every 2 s for at most 60 s
 | X8 | Repo is a fork with no own commits | Signal `is_fork` + `likely_template_or_fork`. Shown to the recruiter. Scores are not auto-zeroed. |
 | X9 | Monorepo with many languages | Tier round-robin by directory keeps coverage. The manifest summary tells the model it is a sample. |
 | X10 | Repo all generated/vendored → nothing selectable | `failed: no_reviewable_code`. Recruiter sees "No reviewable source code". No refund. |
-| X11 | Repo made private between Apply and review | `failed: not_found_or_private`. Ranked on confidence only (MASTER_PLAN default 2). |
+| X11 | Repo made private between Apply and review | `failed: not_found_or_private`. Placed in the ranking's **Incomplete** tier, below all complete applicants (applicant-ranking.md R2, which replaces MASTER_PLAN default 2). No refund. |
 | X12 | Same repo submitted to several jobs | Review cache by `(canonical_url, commit_sha, prompt_version)` (§4.3). |
 | X13 | Non-UTF-8 source files | Decode with `TextDecoder('utf-8', {fatal:false})`. If > 5% replacement characters → treat as binary and skip. |
 | X14 | Gigantic single-line JSON fixtures | Minified rule, or line truncation. |
@@ -629,6 +622,29 @@ The results table is posted as a PR comment.
 
 ## Review notes
 <!-- Data, Lead: add comments here -->
+
+### Data review
+_Reviewer: Data. Context: [`sections/data.md`](../sections/data.md) §3.8, §4, §5; [`applicant-ranking.md`](./applicant-ranking.md)._
+
+**Agree (and data.md updated to match):**
+- A1 deterministic scoring, and the §6 column additions on `fit_evaluations` (`sub_scores`, `requirements`, `band`, `flags`, `job_updated_at`, `attempt_count`) and `repo_evaluations` (`repo_meta`, `signals`, `files_considered`, `tokens_sent`, `strategy`, `flags`, the `failure_code` CHECK list). Added to data.md §3.8 with Data's names, which you already use.
+- A2 cache key including `job_id` and the model id. The in-flight dedupe partial unique index `(applicant_id, input_hash) where status in ('pending','running')` has been added.
+- `ai_usage` full spec (stage, requested_model, prompt_version, provider, generation_id, attempt, status values `ok|error|schema_invalid|timeout|anomaly`, request_id). It replaces data.md's earlier `succeeded|failed` status list. `ai_usage_subject` index added.
+- Bands: `strong/good/moderate/limited`, the same as applicant-ranking.md §2.6. Thanks for aligning.
+- §2.1 "Not sent" list and §2.2 redaction. This covers the fairness request in applicant-ranking.md §2.10.
+- §2.8: connections are never sent to the LLM.
+
+**Issues / requested changes:**
+1. **A5 `repo_review_status` on `my_applications` cannot work as a plain join.** The view is `security_invoker` and applicants have **no** SELECT on `repo_evaluations`, so a join always returns null. data.md now exposes it through a SECURITY DEFINER helper `private.my_repo_review_state(application_id)`. The helper checks `applications.applicant_id = auth.uid()` and returns only `{status, reason}`. **Coarsening:** `status ∈ {pending, completed, failed}` (`running` folds into `pending`). `reason` is set only for applicant-actionable codes: `not_found_or_private`, `too_large`, `too_many_files`, `archive_too_large`, `empty`, `no_reviewable_code`. Everything else (`timeout`, `llm_failed`, `integrity`, `github_unavailable`) maps to `reason = 'system'`. Above all, **`integrity` must not be shown**, or it tells an attacker their injection was caught. Please use `completed`, not `succeeded`, in the API (`repoReviewStatus`).
+2. **`fit_evaluations.flags` leaks injection detection to the applicant.** Applicants can SELECT their own rows, so PostgREST would return `flags.injection_suspected`. data.md now **column-grants** `fit_evaluations` to `authenticated` without `flags`. Recruiters get flags through `job_applicant_rankings` via the definer helper `private.fit_flags_for_member(fit_id)`. Your `GET /api/v1/fit-evaluations/{id}` already omits flags. Please keep that, and select explicit columns (no `select *`).
+3. **X11 and §3.9 say a failed review is "ranked on confidence only".** applicant-ranking.md R2 puts failed **and** pending reviews in an "Incomplete" tier below complete applicants. Please reference that, or raise it with the Lead. This disagreement is still open.
+4. **§4.3 cross-application review cache.** Add an index for the lookup: `repo_evaluations (repo_url, commit_sha, prompt_version) where status = 'succeeded'` (added to data.md). `repo_url` must be **canonical** (lowercase owner/repo, no `.git` or trailing slash) before insert. Please state that `apply_to_job` receives the canonical URL. It is also part of `request_hash`, so a non-canonical URL would cause false `IDEMPOTENCY_KEY_REUSED`.
+5. **Repo ownership is not verified.** An applicant can submit any public repo (e.g. a famous OSS project), and the cache makes that free. Show `repo_meta.full_name` and owner to recruiters with "Ownership not verified". Consider a signal `owner_matches_applicant` (GitHub login vs. OIDC identity, Later). This is a product risk for the Lead, not a schema change.
+6. **`adminRetryEvaluation({kind:'fit'})`** works only on `failed` rows. data.md's trigger makes `succeeded` evaluations immutable, so a retry of a succeeded fit is a CONFLICT. For a failed snapshot fit, retry must update the same row, so `applications.fit_evaluation_id` stays valid. Please note this.
+7. **`requirements[].evidence`** quotes resume text. That is fine (applicant-owned, cascades on deletion), but cap it at 300 chars per item in zod so the jsonb stays bounded. data.md adds `check (pg_column_size(requirements) < 64000)`.
+8. **§7 `GET /api/v1/jobs/{jobId}/connections`** returns `{firstName, lastName, position, connectedOn}`, max 20. linkedin-ingestion.md §4 adds `companyName`, `matchKind` (`exact|prefix|fuzzy`), `exactCount`, `possibleCount` and `asOf` (max 100). Please adopt that contract; ingestion owns it.
+9. **`GET /api/v1/recruiter/applications/{id}`** returns `rankScore`. Please also return `rank.tier` and `isProvisional` from the view, so it matches the list (applicant-ranking.md §2.8).
+10. **`job_updated_at not null`:** fine. `input_hash` uses `jobs.updated_at`, which also changes on close/reopen, so those cause harmless cache misses. No change needed.
 
 ## Resolution
 <!-- Lead -->

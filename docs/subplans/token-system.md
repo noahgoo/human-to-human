@@ -76,7 +76,7 @@ balance(applicant, P) = Σ amount  WHERE applicant_id = applicant AND period = P
 | Job → `archived` with applications in `submitted` | **Yes**, for each `submitted` application | `archiveJob` server action sends `job/archived` → Inngest `refund-archived-job-applications` calls `refund_application(id, 'job_archived')` per application |
 | Admin suspends or rejects a company (company-verification.md) | **Yes** (its open jobs are archived, so the rule above applies) | Same path |
 | Job hard delete | Not possible with applications (`ON DELETE RESTRICT` from `applications.job_id`) | n/a |
-| Repo review `failed` (applicant cause) | No | Ranked on confidence only and flagged |
+| Repo review `failed` (applicant cause) | No | Placed in the ranking's Incomplete tier (applicant-ranking.md R2) and flagged |
 | Repo review `failed` (system cause) | No, it is re-run | Admin `retryRepoEvaluation` |
 | Applicant withdraws | No | n/a |
 | Duplicate charge caused by a bug | Yes, manually | `admin_adjust_tokens(+n, reason)` |
@@ -346,6 +346,27 @@ Rate limit on `POST /api/v1/applications`: 10/min per user (backend.md §2.6).
 ## Review notes
 <!-- Data, Frontend: add comments here -->
 
+### Data review
+_Reviewer: Data. Context: [`sections/data.md`](../sections/data.md) §3.5, §3.8, §3.9, §5.3, §11._
+
+**Agree (and data.md updated to match):**
+- T1/T2: a read-only `get_token_balance()` with a virtual +10 and **no grant cron**. Fewer writes; lazy materialization only inside `apply_to_job` and `admin_adjust_tokens`. This deviates from MASTER_PLAN §4, so the Lead must log it. Data supports it.
+- T3/E15: `token_cost` and `is_technical` frozen once an application exists. data.md's `guard_job_update` now covers both, with `HINT 'CONFLICT'` and `DETAIL {"reason":"pricing_locked"}`. `jobs.token_cost default 2` added.
+- T8: `p_expected_cost`. Also §3.3 step 11, which sets `resume_id` from `active_resume_id` and stores `request_hash`. This is exactly data.md D1.
+- Ledger additions: column **`reason`** (data.md renamed its `note` to `reason`), the refund CHECK requiring `application_id` and `reason`, and the **one-refund-per-application** unique index.
+- The `(7301, hashtext(uid))` advisory-lock namespace, and the `FOR SHARE` on the job row. Together with the trigger this closes the cost-change race (E8).
+- `token_period()` / `current_token_period()` as the single period helper. data.md's `private.current_period()` is dropped in favour of yours.
+
+**Issues / requested changes:**
+1. **`token_ledger.application_id` must be ON DELETE CASCADE, not SET NULL.** You are right. data.md had SET NULL, which **breaks account deletion**: the spend CHECK requires `application_id is not null`, so when the cascade deletes `applications` before `token_ledger`, the update to null violates the CHECK and the whole delete fails. data.md is fixed to CASCADE. Add a pgTAP test (`09_cascade`).
+2. **`search_path`:** your functions use `set search_path = public, pg_temp`. data.md's convention for every SECURITY DEFINER function is `set search_path = ''` with fully qualified names (`public.token_ledger`, `extensions.…`). Supabase's linter flags anything else. Data will write the SQL that way, so please update the spec snippets.
+3. **The repo URL regex differs** from the `applications.github_repo_url` CHECK. data.md's CHECK is stricter: the owner cannot start with `-`. Make the column CHECK the single source of truth. Step 7's regex can stay as defense in depth, but it must be identical. Also, `request_hash` must be computed from the **canonical** URL (lowercase, no `.git`, no trailing slash). The handler canonicalizes before the RPC; otherwise E11 fires on cosmetic differences.
+4. **`admin_adjust_tokens` granted to `authenticated`:** the admin check inside SQL must also require MFA. data.md's `is_admin()` now requires `auth.jwt()->>'aal' = 'aal2'`, so use `public.is_admin()`. Cap `|amount| ≤ 20` as written. Writes `audit_log('admin.token_adjustment')`, which already exists.
+5. **Refund events:** step 6 writes `application_events` with `from_status = to_status`. That is allowed by data.md, but `note` is recruiter-visible. Use `note = 'refund:job_archived'` as written; never free text from admins there.
+6. **`refunded` in `GET /api/v1/applications`** (backend.md): data.md's `my_applications` now exposes `is_refunded` (exists a `refund` ledger row for the application). This is computed under the applicant's own ledger RLS, so it is safe.
+7. **Period column type:** fine as `text` + CHECK. Keep `token_period()` IMMUTABLE only while it never feeds an index on a locale-dependent format. `'YYYY-MM'` is locale-safe.
+8. **pgTAP ownership:** agreed, Data writes `05_apply_to_job.test.sql` and `token_system.test.sql` from §6. Please add a test for the cascade fix (issue 1), plus one where an archived job's application is withdrawn before the refund runs (expect `not_eligible`).
+
 ### Frontend review
 _Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend.md) §5.4, §5.5, §6.3._
 
@@ -361,6 +382,10 @@ _Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend
 7. **Error details.** `INSUFFICIENT_TOKENS.details.resetsAt` and `ALREADY_APPLIED.details.applicationId` are both used directly by the dialog (reset-date copy and redirect to the existing application). No change needed.
 8. **Ledger endpoint (`/api/v1/tokens/ledger`).** Not used by the MVP UI. Frontend proposes a "Credit history" list on `/profile` as **Later**. Fine to keep the endpoint for admin and support.
 9. **E2E ownership.** Accepted. Frontend Playwright flow 4 covers the balance decrement, a single application on double-click, the reset date when credits are insufficient, and the `token_cost_changed` re-confirm (via a seeded cost change between dialog open and submit).
+
+**Frontend re-check (cross-review round), against the current version of this doc:** the body has not changed since the review above.
+- Item 5 (withdraw) is **closed**. Backend (`withdrawApplication`) and Data (`withdraw_application`) both ship it, so frontend now exposes Withdraw on `/applications/[id]`. The confirm copy states that credits are not refunded and that the applicant can't re-apply (T6, E12).
+- Items 1 (UI says "credits"), 2 (new key when the body changes), 3 (400 vs 422 for a missing key) and 4 (pill denominator / `total`) are **still open**.
 
 ## Resolution
 <!-- Lead -->

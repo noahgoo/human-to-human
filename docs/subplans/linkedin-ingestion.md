@@ -485,4 +485,21 @@ Errors: `NOT_FOUND` (job not visible), `FORBIDDEN` (not applicant). No active im
 
 ## Review notes
 
+### Backend review
+
+**Agree. I have adopted these in my docs** (backend.md §2.4, §2.5, §4.2):
+- **Pipeline and Inngest config:** adopted in backend.md as the spec for `parse-linkedin-import`: per-kind steps, delete-then-insert by `import_id`, `activate_linkedin_import` doing an atomic replace-all, concurrency 1 per `applicantId`, `cancelOn` superseding uploads, and `NonRetriableError` for validation errors. The event payload is now `{importId, applicantId}`, with event id = `importId`.
+- **API contract:** I switched my request and response shapes to yours: `{name, size}`, `uploads[].signedUrl`, and `matchKind/exactCount/possibleCount/asOf` on `/jobs/{jobId}/connections`. I also aligned the resume upload init to `{name, size, mimeType}` → `signedUrl` for consistency. I added `GET /linkedin-imports/active` and `DELETE /linkedin-imports/active?scope=`, which replace my `deleteLinkedInData` server action.
+- **Limits:** I now cite your §2.3 (Connections ≤ 35,000 fatal, other files truncated) instead of my own caps. I also replaced my raw-file purge with your `purge-linkedin-raw`.
+- **L5 onboarding gate:** "resume + import with ≥1 recognised file" adopted. My `completeApplicantOnboarding` calls `mark_onboarded()`.
+- **L3 atomic import:** agreed.
+
+**Issues:**
+1. **`activate_linkedin_import` supersede check includes `pending`.** A newer import that was only *initialised* (init called, upload abandoned, or a second tab opened the dialog) has status `pending`. It would block the older, fully uploaded import from activating, which fails as `SUPERSEDED`, until the newer one is marked `ABANDONED` 24 h later. `cancelOn` only fires on `linkedin/import.uploaded`, so it handles real supersession. **Proposal:** count only newer imports with status `running` or `succeeded`, or `pending` ones whose `complete` was called (add `uploaded_at` and check `uploaded_at is not null`). Please add the edge case "init in tab B, abandon; tab A completes → A activates" to the integration tests.
+2. **`complete` request with an Inngest event-id dedupe of `importId`:** fine. My sweeper (`sweep-stuck-work`) re-emits for `pending` imports whose `complete` succeeded but that never reached `running` after 10 min. It needs the same `uploaded_at` marker to tell "completed" apart from "init only". This is the same request as (1).
+3. **Service-role inserts in step c:** the 1,000-row chunks go through PostgREST with the service role. Please make sure `connections` has no trigger that calls `auth.uid()`, because it is null under the service role. Also make sure the generated `company_name_normalized` (with `unaccent`) is fast enough for 35k rows: about 35 requests, which is fine within the 120 s step timeout.
+4. **`DELETE …/active?scope=all` while a parse is running:** please define this. My suggestion: the handler also cancels the run by sending `linkedin/import.deleted`, which is added to `cancelOn`, and marks running imports `failed` (`DELETED`). Otherwise `activate` could resurrect data the user just deleted.
+5. **Rate limit placement:** 10 imports/day is enforced on init (`uploads.init` policy in backend.md §2.6). `complete` is not limited separately.
+6. **Fit cache interplay:** confirmed. `fit_evaluations.linkedin_import_id` is part of my `input_hash` (ai-evaluation.md A2), so activation invalidates cached fits automatically. The deleted old import nulls the provenance FK only.
+
 ## Resolution

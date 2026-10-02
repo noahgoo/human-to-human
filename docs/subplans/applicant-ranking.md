@@ -431,4 +431,46 @@ Arithmetic: A1 = 0.7·90 + 7·10/3 = 63 + 23.33; A5 = 61.6 + 5.5·10/3 = 61.6 + 
 
 ## Review notes
 
+### Frontend review
+_Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend.md) §1.1 (F8, F10, F12, F16, F17), §4.2, §6.5._
+
+**Agree / adopted in frontend.md:** R1 scaling (the `RankBreakdown` copy shows the scaled GitHub value), R2 tiers, R3 total order, R5 bands + labels, R6 position, the §2.8 contract, the §2.9 sort/filter set (this closes frontend F12), the §2.10 disclaimer text verbatim, and "no bulk actions keyed on score". I also accept "no LinkedIn data for recruiters" (this closes F8; `LinkedInSummary` removed). LLM text (explanation, rationale, evidence) is rendered as **plain text only**. Evidence paths are shown in mono and never linked.
+
+**1. Data contract (list and detail)**
+- The list contract is fine. Please also add a **detail** read with the same `RankedApplicant` plus `resume: { available, fileName, mimeType, sizeBytes, textContent }` (detail only, not in list pages, because of payload size) and `events: {toStatus, at, actorName}[]`. The detail page reads the view by `application_id` in the RSC, so this may simply be documented columns/joins rather than a new endpoint.
+- **`counts`:** add `unscored` (tier 2) next to `incomplete`, because frontend shows per-tier group headers. Also state whether `counts.incomplete` respects the status filter. Frontend assumes it is counted over **Active** (`submitted,shortlisted`) only.
+- **Shared loader:** page 1 in the RSC calls the RPC directly (§4, last line). Please specify a single `lib/ranking/loadApplicantsPage()` that both the RSC and `GET /api/v1/jobs/{jobId}/applicants` use, so page 1 also returns `next_cursor`, `rankingVersion`, `counts` and `job`. Otherwise the client cannot continue with Load more from an RSC-rendered first page.
+- **R7:** frontend handles either key. Lead to decide globally. The point is the rule (`next_cursor` vs camelCase), not this field alone.
+
+**2. Incomplete tier display** (frontend §6.5 step 6)
+- Only under `sort=rank`, the list is split into labelled groups: *Complete (n)* · *Incomplete: GitHub review pending or unavailable (n)* · *Not scored yet (n)*. Under other sorts, rows carry only badges.
+- Tier 1 shows the confidence as a **provisional** `MatchScoreBadge` (dashed outline, "Provisional"). `rank.score` is never displayed for tier 1, and the band is hidden (`band` is null).
+- The badge copy is as in §2.3. `failure_code` → human copy lives in `lib/copy.ts`. **Request to Backend:** publish the final `failure_code` list (e.g. `repo_not_found`, `repo_private`, `repo_too_large`, `system_error`) so copy can be written. For `system_error`, the UI says "We're retrying the review", not "unavailable".
+- `rank.position` shows for tiers 0–2 under `sort=rank` only. Under other sorts it is hidden, because "#7" next to a newest-first list misleads.
+
+**3. Sort, filter, keyset pagination**
+- Every filter or sort change drops the cursor and refetches page 1. Cursors never go into the URL (only filters and sort do), so shared links always start at page 1.
+- `rankingChanged: true` → banner "Rankings updated · Refresh", with no automatic reorder. Agreed.
+- "Min fit" UI offers Any / 50 / 70 / 85, matching the band thresholds, rather than a free slider.
+- The `github` sort and `github` filter are hidden on non-technical jobs, so the 422 is never hit from the UI.
+- **Question:** does `rank_position` for a **shortlisted** row stay its global position? Per R6, yes. Frontend relies on that for the "#3 of 41" label on the detail page. `of 41` = active non-withdrawn count. Please confirm whether rejected applicants count in the denominator (the view counts all non-withdrawn rows; frontend would prefer that and will label it "of 41 applicants").
+- Prev/Next on the detail page walks the cached pages in the TanStack Query cache. At the end of the loaded pages it fetches the next cursor. No extra endpoint needed.
+
+**4. Email only after shortlisting**
+- Agreed (D2). Detail page, shortlisted only: a **Reveal email** button → `revealContact(applicationId)`. The email is shown with Copy and `mailto:`, plus the caption "Reveals are logged". It is not cached in the query cache, and not shown in the list or after the status moves away from shortlisted.
+- **Request:** `revealContact` should return `CONFLICT` (not `FORBIDDEN`) when the application is no longer shortlisted, so the UI can say "This applicant is no longer shortlisted" instead of a generic access error. §4 currently says `FORBIDDEN (not shortlisted)` in data.md.
+
+**5. Resume signed URL**
+- Name adopted: `getResumeUrl` (frontend previously said `getResumeSignedUrl`).
+- **Conflict to resolve:** backend.md B5 serves resumes with `Content-Disposition: attachment` (no AV scan in MVP), which rules out the inline PDF iframe frontend originally planned. Frontend now plans a **text-first viewer**: `text_content` shown as plain text, plus "Download original" (60 s URL, requested per click, never prefetched, so `audit_log` reflects real views). Inline PDF preview comes **Later**, together with the ClamAV step. This requires `textContent` in the detail read (point 1).
+- The Playwright line in §6.3 ("opening A1's resume issues a signed URL") becomes "clicking Download issues a signed URL".
+
+**6. Fairness disclaimer copy**
+- Used verbatim above every ranking list (info `Alert`, cannot be dismissed, may be collapsed to one line, collapse stored in `localStorage`), and as a single line next to the score on the detail page.
+- Suggest one addition for tier 1 rows, as a tooltip: *"Provisional: this applicant's GitHub review isn't finished, so they're listed below fully scored applicants. This is not a judgment of their code."* This addresses the risk that recruiters read "Incomplete" as negative.
+- `mixedPromptVersions` notice copy: *"Some applicants were scored with an earlier model version, so their scores may not be directly comparable."*
+- Keyboard shortcut `r` (frontend §6.5) only opens the per-applicant confirm dialog. That is consistent with "no bulk reject".
+
+**7. Status transitions.** data.md's `set_application_status` allows `rejected → shortlisted` and `shortlisted → submitted`, and §4 lists `'submitted'` as a target. Frontend adopts this (F10): "Move back to New" and "Reconsider" appear on the detail page only, and Reconsider warns that a rejection email was already sent. **Backend:** confirm that a "reconsidered" applicant gets a shortlist email after the earlier rejection email, and whether moving shortlisted → submitted sends anything (frontend assumes no email).
+
 ## Resolution

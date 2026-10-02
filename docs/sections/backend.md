@@ -77,7 +77,7 @@
 Route paths are owned by Frontend (frontend.md). This table defines behaviour only.
 
 **`onboarded_at` set when:**
-- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'` **and** the active LinkedIn import has `status = 'succeeded'` (any subset of the 5 files, but Profile or Positions must be present). Connections are optional.
+- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'` **and** the active LinkedIn import has `status = 'succeeded'` (at least one recognised file, per linkedin-ingestion.md L5). Connections are optional. The action calls Data's `mark_onboarded()`, which re-checks these prerequisites in SQL.
 - **Recruiter:** `completeRecruiterOnboarding()` succeeds when the recruiter has a `pending` or `verified` membership. Verification is **not** required to finish onboarding, so unverified recruiters can draft jobs (company-verification.md §2.4).
 
 **Guards** (`lib/auth/`, canonical names): `getSession()`, `requireUser()`, `requireRole(role)`, `requireOnboarded()`, `requireCompanyMember(companyId, {verified: true})`, plus **`requireAdmin()`** (role `admin` + `aal2`). Each throws an `AppError`, which route handlers and the server-action wrapper convert to the standard error shape.
@@ -124,7 +124,7 @@ Client: `inngest/client.ts` (`id: 'nexuspulse'`, typed event schemas via `EventS
 | Function id | Trigger | Steps (each a `step.run`) | Retries | Concurrency / throttle | Timeouts |
 |---|---|---|---|---|---|
 | `parse-resume` | `resume/uploaded` `{resumeId, userId}` | load row → download object → re-sniff magic bytes → extract (unpdf / mammoth) with caps → normalize → save `text_content`, `parse_status` | 3 (exp. backoff) | key `event.data.userId` limit 1; global 20 | 60 s per step |
-| `parse-linkedin-import` | `linkedin/import.uploaded` `{importId, userId}` | download files → (ZIP: fflate selective extract) → parse CSVs (Data's `lib/parsers/linkedin/*`) → replace rows for this import in one RPC → set `active_linkedin_import_id` → delete raw files | 3 | key userId limit 1; global 10 | 120 s |
+| `parse-linkedin-import` (**spec owned by linkedin-ingestion.md §2.7**) | `linkedin/import.uploaded` `{importId, applicantId}` (event id = `importId`) | `mark-running` → `validate` → `parse-<kind>` per file (delete-then-insert scoped to `import_id`) → `activate` (`rpc activate_linkedin_import`: atomic replace-all) → `delete-raw`; `onFailure` cleans up rows and raw files | 3 (validation/parse errors are `NonRetriableError`) | key `applicantId` limit 1; `cancelOn` a newer upload by the same applicant (`SUPERSEDED`); global 10 | 120 s |
 | `evaluate-fit` | `fit/evaluation.requested` `{fitEvaluationId, applicantId}` | load + mark running → prepare inputs → `generateObject` (primary → fallback) → score → save → `ai_usage` | 3 | key `applicantId` limit 2; global limit 25; **throttle** 120/min | 45 s |
 | `snapshot-fit` | `application/submitted` `{applicationId, applicantId, jobId, isTechnical}` | compute hash → reuse a succeeded row **or** insert pending + `step.invoke(evaluate-fit)` → set `applications.fit_evaluation_id` | 5 | key applicantId limit 2 | 90 s |
 | `evaluate-repo` | `application/submitted` **if** `event.data.isTechnical == true`, **or** `repo/evaluation.requested` `{repoEvaluationId}` | re-check repo + pin SHA → review-cache lookup → tree manifest + select → download zipball + extract selected → signals + redact → single pass **or** parallel map steps + reduce → validate + sanity caps → save → `ai_usage` per call | 4 (backoff up to ~1 h; GitHub 403 rate limit → `step.sleep` until reset) | key `repoEvaluationId` limit 1; global 10; **throttle** 30/min | 120 s per LLM step; whole run 10 min |
@@ -134,7 +134,8 @@ Client: `inngest/client.ts` (`id: 'nexuspulse'`, typed event schemas via `EventS
 | `on-company-events` | `company/claim.needs_review`, `company/verified`, `company/rejected`, `membership/joined`, `membership/join.requested`, `membership/decided` | resolve recipients → `email/send.requested` | 3 | — | — |
 | `delete-account` | `account/deletion.requested` `{userId, email}` | storage cleanup (list + remove in batches of 100) → `auth.admin.deleteUser` → confirmation email | 5 | key userId limit 1 | 120 s |
 | `sweep-stuck-work` | **cron** `*/5 * * * *` | re-emit `fit/evaluation.requested` for `pending` fits older than 2 min and `running` older than 10 min; same for `repo_evaluations` (> 10 / > 20 min) and `parse_status = pending` resumes/imports with an uploaded object (> 10 min); `application/submitted` for applications with null `fit_evaluation_id` (> 10 min); `job/archived` for archived jobs with un-refunded `submitted` applications. Each re-emit uses the Inngest event `id` = `{row id}:{attempt bucket}` for dedupe. Rows with `attempts ≥ 5` → `failed` | 1 | singleton | 60 s |
-| `purge-expired-data` | **cron** `17 3 * * *` (daily) | delete raw `linkedin-exports` objects > 7 days; delete `resumes` rows + objects for uploads never completed (> 24 h); expire stale company claims (> 7 days unconfirmed); delete consumed/expired `work_email_verifications` > 30 days | 2 | singleton | 300 s |
+| `purge-expired-data` | **cron** `17 3 * * *` (daily) | delete `resumes` rows + objects for uploads never completed (> 24 h); expire stale company claims (> 7 days unconfirmed); delete consumed/expired `work_email_verifications` > 30 days | 2 | singleton | 300 s |
+| `purge-linkedin-raw` (**owned by linkedin-ingestion.md §3**) | **cron** daily | remove Storage objects of imports with `raw_deleted_at is null` that are terminal or older than 7 days | 2 | singleton | 300 s |
 | `ai-spend-monitor` | **cron** `*/15 * * * *` | sum today's `ai_usage.cost_usd` → set Redis `ai:spend:{date}` → Sentry alert at 80% / 100% of `AI_DAILY_BUDGET_USD` | 1 | singleton | — |
 | `recruiter-daily-digest` | **cron** `0 14 * * 1-5` | per recruiter with new applications in the last 24 h → one digest email | 2 | singleton | — |
 
@@ -144,12 +145,12 @@ Event names are `domain/noun.verb` in the past tense for facts and `.requested` 
 Direct-to-Storage uploads with **signed upload URLs**. Our functions never proxy file bytes.
 
 ```
-1. Client → POST /api/v1/resumes/uploads {fileName, sizeBytes, mimeType}
+1. Client → POST /api/v1/resumes/uploads {name, size, mimeType}
    server: requireRole(applicant); rate limit; zod (size ≤ 5 MB, mime ∈ {application/pdf,
            application/vnd.openxmlformats-officedocument.wordprocessingml.document}, ext matches)
            insert resumes(id, applicant_id, storage_path='{uid}/{id}.{ext}', mime_type, size_bytes, parse_status='pending')
            storage.from('resumes').createSignedUploadUrl(path)   // single-use token, 2 h validity (Supabase)
-   → 201 {resumeId, uploadUrl, token, path, expiresAt}
+   → 201 {resumeId, signedUrl, token, path, expiresAt}
 2. Client → supabase.storage.from('resumes').uploadToSignedUrl(path, token, file)
    bucket enforces file_size_limit=5MB and allowed_mime_types (Data configures bucket)
 3. Client → POST /api/v1/resumes/{resumeId}/complete
@@ -160,7 +161,7 @@ Direct-to-Storage uploads with **signed upload URLs**. Our functions never proxy
 4. Client polls GET /api/v1/resumes/{resumeId} (2 s) until parse_status ∈ {succeeded, failed}.
    On success the server action setActiveResume runs implicitly in parse-resume (sets applicant_profiles.active_resume_id).
 ```
-LinkedIn: `POST /api/v1/linkedin-imports` `{source: 'zip'|'csv', files: [{fileName, sizeBytes}]}`:
+LinkedIn (request and response contract owned by linkedin-ingestion.md §4): `POST /api/v1/linkedin-imports` `{source: 'zip'|'csv', files: [{name, size}]}`:
 - **ZIP:** 1 file, ≤ 50 MB, `application/zip`.
 - **CSV:** 1–5 files named from the whitelist `Profile.csv`, `Positions.csv`, `Skills.csv`, `Education.csv`, `Connections.csv`, ≤ 20 MB each, `text/csv`.
 It returns one signed URL per file under `linkedin-exports/{uid}/{importId}/{file}`. `complete` verifies every object, then emits `linkedin/import.uploaded`.
@@ -178,8 +179,8 @@ It returns one signed URL per file under `linkedin-exports/{uid}/{importId}/{fil
   - each ≤ 20 MB uncompressed, cumulative ≤ 60 MB;
   - entries with `..`, absolute paths or symlink attributes are ignored;
   - nested ZIPs are ignored.
-- **CSV:** papaparse with a row cap (Connections ≤ 30,000; others ≤ 2,000) and a field length cap of 5,000 chars. **Formula-injection characters** (`= + - @` at cell start) are stored as-is but escaped by any future CSV export.
-- **Raw-file retention:** LinkedIn raw files are deleted right after a successful parse, and in any case within 7 days (`purge-expired-data`). Resume originals are kept (recruiters download them) until the user replaces or deletes them. Replacing a resume keeps the old object only while an application references it, and it is purged when no application references it (Data's retention rules).
+- **CSV:** papaparse with the row caps from linkedin-ingestion.md §2.3 (Connections ≤ 35,000, fatal above; Positions and Skills 300, Education 50, truncated with a warning) and the column field caps from data.md. **Formula-injection characters** (`= + - @` at cell start) are stored as-is but escaped by any future CSV export.
+- **Raw-file retention:** LinkedIn raw files are deleted right after a successful parse, and in any case within 7 days (`purge-linkedin-raw`). Resume originals are kept (recruiters download them) until the user replaces or deletes them. Replacing a resume keeps the old object only while an application references it, and it is purged when no application references it (Data's retention rules).
 
 ### 2.6 Rate limiting
 | Policy | Subject | Limit | On store outage |
@@ -281,7 +282,7 @@ Most backend-owned schema lives in the sub-plans (token-system §3, ai-evaluatio
 | `profiles.email_digest_opt_out boolean not null default false` | For the digest. |
 | `resumes.parse_error text` | Coarse reason (`encrypted`, `no_text`, `type_mismatch`, `too_large`, `parse_failed`). |
 | `resumes.page_count smallint`, `resumes.original_filename text` (sanitized, ≤ 200 chars) | Shown to recruiters on download. |
-| `linkedin_imports.attempts smallint`, `linkedin_imports.raw_deleted_at timestamptz` | Retention tracking. |
+| ~~`linkedin_imports.attempts`, `raw_deleted_at`~~ | Dropped: data.md already defines `raw_deleted_at` and `started_at` (linkedin-ingestion.md §3). |
 | `ping()` SQL function | For `/api/health`. |
 | Storage buckets | `resumes` (private, 5 MB, PDF/DOCX MIME), `linkedin-exports` (private, 50 MB, zip/csv MIME), `company-logos` (public read, 1 MB, png/jpeg/webp). Storage RLS: owner-only insert into the `{auth.uid()}/` prefix. Recruiters get **no** direct select (they use signed URLs from the server). |
 
@@ -302,20 +303,22 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | SA | `requestPasswordReset` / `updatePassword` | — | anon / user | `{email}` / `{password}` → `{}` | RATE_LIMITED, VALIDATION_FAILED |
 | SA | `setRole` | — | user (role null) | `{role}` → `{redirectTo}` (refreshes session) | CONFLICT (`role_already_set`), VALIDATION_FAILED |
 | SA | `deleteAccount` | — | user | `{confirm: 'DELETE'}` → `{}` (signs out) | CONFLICT (`last_company_admin`) |
-| RA | GET | `/api/v1/me` | user | → `{id, email, fullName, avatarUrl, role, onboarded, company?: {id, name, verificationStatus, membershipStatus, isCompanyAdmin}}` | 401 |
+| SA | `exportMyData` | — | user | `{}` → `{url, expiresAt}`: calls Data's `export_my_data()` and returns the JSON as a 5-min signed download (rate limit 3/day) | RATE_LIMITED |
+| RA | GET | `/api/v1/me` | user | → `{id, email (from the auth session, since `profiles.email` is not column-granted), fullName, avatarUrl, role, onboarded, company?: {id, name, verificationStatus, membershipStatus, isCompanyAdmin}}` | 401 |
 | RA | GET | `/api/health` | anon | → `{ok, db, version}` | 503 |
 
 ### 4.2 Applicant onboarding and profile
 | Kind | Method / name | Path | Auth | Request → Response | Errors |
 |---|---|---|---|---|---|
-| RA | POST | `/api/v1/resumes/uploads` | applicant | `{fileName, sizeBytes, mimeType}` → `201 {resumeId, uploadUrl, token, path, expiresAt}` | 401, 403, 422, 429 |
+| RA | POST | `/api/v1/resumes/uploads` | applicant | `{name, size, mimeType}` → `201 {resumeId, signedUrl, token, path, expiresAt}` | 401, 403, 422, 429 |
 | RA | POST | `/api/v1/resumes/{resumeId}/complete` | applicant (owner) | `{}` → `202 {resumeId, parseStatus}` | 404, 409 (`already_completed`), 422 (`type_mismatch`, `size_mismatch`, `object_missing`) |
 | RA | GET | `/api/v1/resumes/{resumeId}` | applicant (owner) | → `{id, parseStatus, parseError?, pageCount, originalFilename, isActive, createdAt}` | 404 |
 | SA | `deleteResume` | — | applicant | `{resumeId}` → `{}` | CONFLICT (`active_resume_required` while onboarding) |
-| RA | POST | `/api/v1/linkedin-imports` | applicant | `{source, files:[{fileName, sizeBytes}]}` → `201 {importId, uploads:[{fileName, uploadUrl, token, path}], expiresAt}` | 422 (`unknown_file`, `too_large`, `too_many_files`), 429 |
+| RA | POST | `/api/v1/linkedin-imports` | applicant | `{source, files:[{name, size}]}` → `201 {importId, uploads:[{name, path, signedUrl, token}], expiresAt}` (linkedin-ingestion.md §4) | 422 `VALIDATION_FAILED` (`details.code`: `FILE_TOO_LARGE`, `DUPLICATE_FILE_KIND`, …), 429 (10/day) |
 | RA | POST | `/api/v1/linkedin-imports/{importId}/complete` | applicant (owner) | `{}` → `202 {importId, status}` | 404, 409, 422 |
 | RA | GET | `/api/v1/linkedin-imports/{importId}` | applicant (owner) | → `{id, status, source, filesPresent, counts:{positions, skills, education, connections, companies}, error?}` | 404 |
-| SA | `deleteLinkedInData` | — | applicant | `{}` → `{}` (hard-deletes all imports, rows and connections) | — |
+| RA | GET | `/api/v1/linkedin-imports/active` | applicant | → active import summary (same shape as GET by id) | 404 |
+| RA | DELETE | `/api/v1/linkedin-imports/active?scope=all\|connections` | applicant | → `204` (`all`: every import + raw files; `connections`: connections rows only). Logs `linkedin.import_deleted` | 422 |
 | SA | `saveApplicantPreferences` | — | applicant | `{headline?, targetSeniority?, locationPref?}` → profile | VALIDATION_FAILED |
 | SA | `completeApplicantOnboarding` | — | applicant | `{}` → `{redirectTo:'/jobs'}` (calls Data's `mark_onboarded()`, then refreshes the session) | CONFLICT (`resume_not_ready`, `linkedin_not_ready`) |
 
@@ -326,7 +329,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | GET | `/api/v1/jobs/{jobId}` | applicant onb | → job detail (description, requirements, tokenCost, isTechnical) | 404 |
 | RA | POST | `/api/v1/jobs/{jobId}/fit-evaluations` | applicant onb | ai-evaluation §7 | ai-evaluation §7 |
 | RA | GET | `/api/v1/fit-evaluations/{id}` | applicant (owner) | ai-evaluation §7 | 404 |
-| RA | GET | `/api/v1/jobs/{jobId}/connections` | applicant onb | → `{data:[{firstName, lastName, position, connectedOn}], total}` (Data's `connections_at_company(job.company_id)`, user-scoped client) | 404 |
+| RA | GET | `/api/v1/jobs/{jobId}/connections` | applicant onb | → `200 {data:[{id, firstName, lastName, position, companyName, connectedOn, matchKind}], exactCount, possibleCount, asOf}` (contract owned by linkedin-ingestion.md §4; Data's `connections_at_company(job.company_id)`, user-scoped client) | 404 |
 | RA | POST | `/api/v1/repos/validate` | applicant | `{url}` → `{canonicalUrl, fullName, defaultBranch, sizeKb, language}` | 422 `REPO_NOT_ACCESSIBLE`, 429 |
 | RA | GET | `/api/v1/tokens/balance` | applicant | → `{period, granted, spent, refunded, adjusted, balance, resetsAt}` | 401, 403 |
 | RA | GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | token-system §4 | 422 |
@@ -340,7 +343,7 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 |---|---|---|---|---|---|
 | RA | GET | `/api/v1/companies?query` | recruiter | company-verification §4 | |
 | SA | `checkWorkEmailDomain`, `startCompanyClaim`, `requestCompanyJoin`, `resendWorkEmailVerification`, `confirmWorkEmail`, `cancelPendingMembership`, `updateCompanyProfile`, `approveMember`, `removeMember`, `setCompanyAdmin` | — | recruiter / cadmin | company-verification §4 | |
-| RA | POST | `/api/v1/companies/{companyId}/logo/uploads` | cadmin or pending creator | `{fileName, sizeBytes, mimeType}` → signed upload | 403, 422 |
+| RA | POST | `/api/v1/companies/{companyId}/logo/uploads` | cadmin or pending creator | `{name, size, mimeType}` → signed upload | 403, 422 |
 | SA | `completeRecruiterOnboarding` | — | recruiter | → `{redirectTo:'/recruiter'}` | CONFLICT (`no_membership`) |
 | SA | `createJob` | — | recruiter with an active membership (pending ok) | `{title, description, requirements, tokenCost 1–3, isTechnical}` → job (`draft`) | VALIDATION_FAILED (title 5–120, description 50–20,000, requirements 0–10,000 chars) |
 | SA | `updateJob` | — | member, or the pending creator for drafts | partial job → job | CONFLICT (`pricing_locked`), FORBIDDEN |
@@ -348,10 +351,11 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | SA | `closeJob` / `reopenJob` | — | member | `{jobId}` → job | CONFLICT |
 | SA | `archiveJob` | — | member | `{jobId}` → `{job, refundsQueued}` → emits `job/archived` | CONFLICT |
 | SA | `deleteDraftJob` | — | member / creator | `{jobId}` → `{}` | CONFLICT (`has_applications` / not draft) |
-| RA | GET | `/api/v1/recruiter/jobs/{jobId}/applicants?limit&cursor&status` | member | from `job_applicant_rankings` → `{data:[{applicationId, applicant:{id, fullName, headline, avatarUrl}, status, rankScore, confidenceScore, band, repo?:{status, security, organization, performance, testing, average}, rankFlags, submittedAt}], next_cursor}` (contract owned by applicant-ranking.md) | 401, 403, 404 |
+| RA | GET | `/api/v1/jobs/{jobId}/applicants?limit&cursor&sort&status&minConfidence&github&includeIncomplete&rankingVersion` | member | `rpc job_applicant_rankings_page` → `{data: RankedApplicant[], next_cursor, rankingVersion, rankingChanged, counts, job}` (**contract owned by applicant-ranking.md §2.8, §4**) | 401, 403, 404, 422, 429 |
 | RA | GET | `/api/v1/recruiter/applications/{applicationId}` | member | ai-evaluation §7 | 403, 404 |
-| SA | `getResumeDownloadUrl` | — | member | `{applicationId}` → `{url, expiresAt}` (60 s, `download` disposition, the resume snapshotted on the application) | FORBIDDEN, NOT_FOUND |
-| SA | `shortlistApplication` / `rejectApplication` | — | member | `{applicationId, note?}` → application. Calls Data's `set_application_status` RPC (which writes `application_events` + `audit_log`), then emits `application/status.changed` | CONFLICT (`withdrawn` is terminal) |
+| SA | `getResumeUrl` | — | member | `{applicationId}` → `{url, expiresAt}` (60 s, `download` disposition, the resume snapshotted on `applications.resume_id`; logs `resume.signed_url`) | FORBIDDEN, NOT_FOUND |
+| SA | `revealContact` | — | member | `{applicationId}` → `{email}` via `rpc get_applicant_contact` (shortlisted only; `profiles.email` is not column-granted) | FORBIDDEN, NOT_FOUND |
+| SA | `setApplicationStatus` | — | member | `{applicationId, toStatus: 'shortlisted'\|'rejected'\|'submitted', note?}` → application. Calls Data's `set_application_status` RPC (which writes `application_events` + `audit_log`), then emits `application/status.changed` | FORBIDDEN, CONFLICT (invalid transition; `withdrawn` is terminal) |
 
 Recruiter dashboard reads (job list, counts) are RSC-only, through the user-scoped client.
 
