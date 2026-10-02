@@ -29,7 +29,12 @@ export interface MockDb {
   memberships: RecruiterMembership[];
   /** Manual credit adjustments / refunds per applicant for the current period. */
   tokenAdjustments: Array<{ applicantId: string; kind: "refund" | "adjustment"; amount: number; at: string }>;
+  /** Demo users who have finished onboarding. */
+  onboardedUserIds: string[];
 }
+
+export const DEMO_NEW_APPLICANT_ID = "user-applicant-new";
+export const DEMO_NEW_RECRUITER_ID = "user-recruiter-new";
 
 const now = Date.now();
 const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString();
@@ -262,13 +267,19 @@ function seed(): MockDb {
     connections,
     memberships,
     tokenAdjustments: [],
+    onboardedUserIds: [DEMO_APPLICANT_ID, DEMO_RECRUITER_ID, "user-recruiter-fernway", ...otherApplicants.map((a) => a.id)],
   };
 }
 
-const g = globalThis as unknown as { __npMockDb?: MockDb };
+// Bump when the MockDb shape or seed changes so a running dev server reseeds.
+const SEED_VERSION = 2;
+const g = globalThis as unknown as { __npMockDb?: MockDb; __npMockDbVersion?: number };
 
 export function db(): MockDb {
-  if (!g.__npMockDb) g.__npMockDb = seed();
+  if (!g.__npMockDb || g.__npMockDbVersion !== SEED_VERSION) {
+    g.__npMockDb = seed();
+    g.__npMockDbVersion = SEED_VERSION;
+  }
   return g.__npMockDb;
 }
 

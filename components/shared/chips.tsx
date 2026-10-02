@@ -51,14 +51,14 @@ export function TokenCostBadge({ cost, className }: { cost: TokenCost | number; 
 }
 
 export function TechnicalChip() {
-  return <span className={cn(chipBase, "border-border bg-card text-body")}>Technical</span>;
+  return <span className={cn(chipBase, "border-border bg-card text-copy")}>Technical</span>;
 }
 
 const BAND_TONE = {
   strong: "bg-success text-white border-success",
   good: "bg-success-subtle text-success-fg border-success/40",
   moderate: "bg-warning-subtle text-warning-fg border-warning/30",
-  limited: "bg-muted text-body border-border",
+  limited: "bg-muted text-copy border-border",
 } as const;
 
 export function MatchScoreBadge({

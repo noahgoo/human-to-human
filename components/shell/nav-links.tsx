@@ -22,7 +22,7 @@ export function NavLinks({ items }: { items: NavItem[] }) {
           href={item.href}
           aria-current={active === item.href ? "page" : undefined}
           className={cn(
-            "rounded-md px-3 py-1.5 text-body font-medium whitespace-nowrap text-body transition-colors hover:bg-accent hover:text-foreground",
+            "rounded-md px-3 py-1.5 text-body font-medium whitespace-nowrap text-copy transition-colors hover:bg-accent hover:text-foreground",
             active === item.href && "bg-muted text-foreground",
           )}
         >
