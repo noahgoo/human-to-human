@@ -33,8 +33,8 @@ describe.skipIf(!live)("evaluateCandidate (live Jev)", () => {
       expect(result.confidenceScore).toBeGreaterThanOrEqual(0);
       expect(result.confidenceScore).toBeLessThanOrEqual(100);
       expect(["strong", "good", "moderate", "limited"]).toContain(result.band);
-      expect(result.agents.softwareEngineer?.confidenceScore).toBeDefined();
-      expect(result.agents.dataScientist?.confidenceScore).toBeDefined();
+      expect(result.agents.engineeringHiringManager?.confidenceScore).toBeDefined();
+      expect(result.agents.dataHiringManager?.confidenceScore).toBeDefined();
       expect(result.agents.resumeAnalyst?.sources.resume?.score).toBeDefined();
       expect(result.githubReview).toBeNull();
     },
@@ -57,7 +57,7 @@ describe.skipIf(!live)("evaluateCandidate (live Jev)", () => {
         fetchImpl: mockGithubFetch(),
       });
       expect(result.confidenceScore).toBeGreaterThanOrEqual(0);
-      expect(result.agents.softwareEngineer).toBeDefined();
+      expect(result.agents.engineeringHiringManager).toBeDefined();
     },
     300_000,
   );

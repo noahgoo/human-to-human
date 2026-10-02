@@ -42,22 +42,22 @@ describe("jevCompareCalls", () => {
 describe("aggregateFit", () => {
   it("averages source scores per agent, then averages the two agents", () => {
     const preview = aggregateFit([
-      { agent: "softwareEngineer", source: "profile", distribution: [0, 0, 0, 0, 1] },
-      { agent: "softwareEngineer", source: "github", distribution: [0, 0, 0, 1, 0] },
-      { agent: "dataScientist", source: "richMedia", distribution: [0, 0, 1, 0, 0] },
+      { agent: "engineeringHiringManager", source: "profile", distribution: [0, 0, 0, 0, 1] },
+      { agent: "engineeringHiringManager", source: "github", distribution: [0, 0, 0, 1, 0] },
+      { agent: "dataHiringManager", source: "richMedia", distribution: [0, 0, 1, 0, 0] },
     ]);
-    expect(preview.agents.softwareEngineer?.sources.profile?.score).toBe(100);
-    expect(preview.agents.softwareEngineer?.sources.github?.score).toBe(75);
-    expect(preview.agents.softwareEngineer?.confidenceScore).toBe(88);
-    expect(preview.agents.dataScientist?.confidenceScore).toBe(50);
+    expect(preview.agents.engineeringHiringManager?.sources.profile?.score).toBe(100);
+    expect(preview.agents.engineeringHiringManager?.sources.github?.score).toBe(75);
+    expect(preview.agents.engineeringHiringManager?.confidenceScore).toBe(88);
+    expect(preview.agents.dataHiringManager?.confidenceScore).toBe(50);
     expect(preview.confidenceScore).toBe(69);
     expect(preview.band).toBe("moderate");
-    expect(preview.agents.softwareEngineer?.sources.richMedia).toBeUndefined();
+    expect(preview.agents.engineeringHiringManager?.sources.richMedia).toBeUndefined();
   });
 
   it("includes a resume analyst when resume is scored", () => {
     const preview = aggregateFit([
-      { agent: "softwareEngineer", source: "profile", distribution: [0, 0, 0, 0, 1] },
+      { agent: "engineeringHiringManager", source: "profile", distribution: [0, 0, 0, 0, 1] },
       { agent: "resumeAnalyst", source: "resume", distribution: [0, 0, 0, 1, 0] },
     ]);
     expect(preview.agents.resumeAnalyst?.sources.resume?.score).toBe(75);

@@ -1,13 +1,13 @@
 export const FIT_SOURCES = ["richMedia", "profile", "github", "resume"] as const;
 export type FitSource = (typeof FIT_SOURCES)[number];
 
-export const FIT_AGENTS = ["softwareEngineer", "dataScientist", "resumeAnalyst"] as const;
+export const FIT_AGENTS = ["engineeringHiringManager", "dataHiringManager", "resumeAnalyst"] as const;
 export type FitAgent = (typeof FIT_AGENTS)[number];
 
 /** Which evidence each agent may score. Resume is only for the resume analyst. */
 export const AGENT_SOURCES: Record<FitAgent, readonly FitSource[]> = {
-  softwareEngineer: ["richMedia", "profile", "github"],
-  dataScientist: ["richMedia", "profile", "github"],
+  engineeringHiringManager: ["richMedia", "profile", "github"],
+  dataHiringManager: ["richMedia", "profile", "github"],
   resumeAnalyst: ["resume"],
 };
 
@@ -35,9 +35,9 @@ export function jevCompareCalls(evidence: Record<(typeof JEV_COMPARE_SOURCES)[nu
 }
 
 export const AGENT_INSTRUCTIONS: Record<FitAgent, string> = {
-  softwareEngineer:
-    "You are a state.jobTitle for the role in state.jobTitle. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",
-  dataScientist:
+  engineeringHiringManager:
+    "You are a hiring manager for the role in state.jobTitle. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh building, shipping, and systems work. Ignore name, school, photos, and location.",
+  dataHiringManager:
     "You are a hiring manager for the role in state.jobTitle. Using only state.evidence, judge how well the candidate meets the job requirements. Weigh analysis, modeling, experimentation, and data work. Ignore name, school, photos, and location.",
   resumeAnalyst:
     "You are a hiring analyst. Using only state.evidence (the candidate resume), judge how well the candidate meets state.jobTitle and state.jobRequirements. Match skills, experience, and projects to the posting. Ignore name, gender, age, photos, address, and school prestige.",

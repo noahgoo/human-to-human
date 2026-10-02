@@ -10,7 +10,7 @@ describe.skipIf(!live)("Jev client (live OpenRouter)", () => {
     "returns a normalized 5-bin distribution for a profile evidence call",
     async () => {
       const distribution = await scoreEvidence({
-        agent: "softwareEngineer",
+        agent: "engineeringHiringManager",
         source: "profile",
         jobTitle: FIXTURE_JOB.jobTitle,
         jobRequirements: FIXTURE_JOB.jobRequirements,
