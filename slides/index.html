@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Known</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f8fafc;
+        --ink: #0f172a;
+        --copy: #475569;
+        --muted: #64748b;
+        --line: #e2e8f0;
+        --card: #ffffff;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; }
+      body {
+        font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+      }
+      main {
+        height: 100%;
+        display: grid;
+        grid-template-rows: 1fr auto;
+      }
+      .slide {
+        display: none;
+        max-width: 46rem;
+        margin: 0 auto;
+        padding: 12vh 2rem 2rem;
+      }
+      .slide.active { display: block; }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        margin: 0 0 1.5rem;
+      }
+      .brand img {
+        width: 2.5rem;
+        height: 2.5rem;
+        border-radius: 0.55rem;
+      }
+      .brand span {
+        font-size: 1.15rem;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+      }
+      .kicker {
+        margin: 0 0 1rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+      h1 {
+        margin: 0;
+        font-size: clamp(2.5rem, 6vw, 4.25rem);
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+      }
+      h2 {
+        margin: 0 0 1.25rem;
+        font-size: clamp(2rem, 4.5vw, 3.25rem);
+        line-height: 1.1;
+        letter-spacing: -0.03em;
+      }
+      .lead {
+        margin: 1.25rem 0 0;
+        max-width: 34rem;
+        font-size: 1.25rem;
+        line-height: 1.5;
+        color: var(--copy);
+      }
+      .lead + ul { margin-top: 1.25rem; }
+      ul {
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      li {
+        margin: 0 0 0.9rem;
+        padding-left: 1rem;
+        border-left: 2px solid var(--line);
+        font-size: 1.2rem;
+        line-height: 1.45;
+        color: var(--copy);
+      }
+      nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 1.25rem 2rem 1.75rem;
+      }
+      .dots { display: flex; gap: 0.5rem; }
+      .dots button, .step {
+        border: 0;
+        background: transparent;
+        color: var(--ink);
+        font: inherit;
+        cursor: pointer;
+      }
+      .dots button {
+        width: 0.55rem;
+        height: 0.55rem;
+        border-radius: 999px;
+        background: var(--line);
+      }
+      .dots button[aria-current="true"] { background: var(--ink); }
+      .steps { display: flex; gap: 0.5rem; }
+      .step {
+        border: 1px solid var(--line);
+        background: var(--card);
+        border-radius: 999px;
+        padding: 0.4rem 0.85rem;
+      }
+      .step:disabled { opacity: 0.35; cursor: default; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <section class="slide active" data-slide>
+        <div class="brand">
+          <img src="/known-mark.png" alt="" width="40" height="40" />
+          <span>Known</span>
+        </div>
+        <h1>Hire people who chose you.</h1>
+        <p class="lead">A smaller pool of applicants who want to work at your company.</p>
+      </section>
+
+      <section class="slide" data-slide>
+        <p class="kicker">Problem</p>
+        <h2>The people who care get lost.</h2>
+        <ul>
+          <li>Recruiters sort through millions of resumes written by AI.</li>
+          <li>People mass-apply, so intent is hard to see.</li>
+          <li>Candidates who actually like the company disappear in the pile.</li>
+        </ul>
+      </section>
+
+      <section class="slide" data-slide>
+        <p class="kicker">Solution</p>
+        <h2>Limit how many jobs someone can apply to.</h2>
+        <p class="lead">Fewer applications means a smaller group of people who want to work for your company.</p>
+      </section>
+
+      <section class="slide" data-slide>
+        <p class="kicker">Tokens</p>
+        <h2>10 tokens each month.</h2>
+        <ul>
+          <li>Every person gets 10 tokens to spend on applications.</li>
+          <li>A job costs 1–3 tokens, so they choose which companies are worth it.</li>
+          <li>When the tokens are gone, they wait until next month.</li>
+        </ul>
+      </section>
+
+      <section class="slide" data-slide>
+        <p class="kicker">Jev</p>
+        <h2>Each applicant is scored for the role.</h2>
+        <ul>
+          <li>An engineering hiring manager reads the profile, rich media, and GitHub, and weighs building, shipping, and systems work.</li>
+          <li>A data hiring manager reads the same sources, and weighs analysis, modeling, and data work.</li>
+          <li>A resume analyst reads only the resume, and matches skills, experience, and projects to the posting.</li>
+          <li>Name, school, photos, and location are left out.</li>
+        </ul>
+      </section>
+
+      <section class="slide" data-slide>
+        <p class="kicker">GitHub</p>
+        <h2>Technical roles get a repo review.</h2>
+        <p class="lead">GPT-4.1 mini scores the repository on five things.</p>
+        <ul>
+          <li>Data Architecture</li>
+          <li>Performance &amp; Reliability</li>
+          <li>Deployment &amp; Operations</li>
+          <li>Code Quality</li>
+          <li>Team Topology</li>
+        </ul>
+      </section>
+
+      <nav>
+        <div class="dots" id="dots"></div>
+        <div class="steps">
+          <button class="step" id="prev" type="button">Back</button>
+          <button class="step" id="next" type="button">Next</button>
+        </div>
+      </nav>
+    </main>
+    <script>
+      const slides = [...document.querySelectorAll("[data-slide]")];
+      const dots = document.querySelector("#dots");
+      const prev = document.querySelector("#prev");
+      const next = document.querySelector("#next");
+      let index = 0;
+
+      slides.forEach((_, i) => {
+        const dot = document.createElement("button");
+        dot.type = "button";
+        dot.setAttribute("aria-label", "Slide " + (i + 1));
+        dot.addEventListener("click", () => show(i));
+        dots.append(dot);
+      });
+
+      function show(nextIndex) {
+        index = (nextIndex + slides.length) % slides.length;
+        slides.forEach((slide, i) => slide.classList.toggle("active", i === index));
+        [...dots.children].forEach((dot, i) => dot.toggleAttribute("aria-current", i === index));
+        prev.disabled = index === 0;
+        next.disabled = index === slides.length - 1;
+      }
+
+      prev.addEventListener("click", () => show(index - 1));
+      next.addEventListener("click", () => show(index + 1));
+      document.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowRight" || event.key === " ") show(index + 1);
+        if (event.key === "ArrowLeft") show(index - 1);
+      });
+      show(0);
+    </script>
+  </body>
+</html>
