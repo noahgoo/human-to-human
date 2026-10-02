@@ -30,11 +30,10 @@ export function normalizeGithubRepoUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== "https:" || url.hostname.toLowerCase() !== "github.com") return null;
-  const path = url.pathname.replace(/\.git$/i, "").replace(/\/+$/, "");
-  const parts = path.split("/").filter(Boolean);
+  const parts = url.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
   if (parts.length < 2) return null;
   const owner = parts[0];
-  const repo = parts[1];
+  const repo = parts[1]?.replace(/\.git$/i, "");
   if (!owner || !repo) return null;
   if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) return null;
   return `https://github.com/${owner}/${repo}`;

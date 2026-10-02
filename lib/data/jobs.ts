@@ -26,30 +26,26 @@ function companyOf(companyId: string) {
 /** Open jobs at verified companies, newest first. `q` matches title or company name. */
 export function listOpenJobs(filters: JobListFilters = {}): JobWithCompany[] {
   const q = filters.q?.trim().toLowerCase();
-  const store = db();
-  return store.jobs
-    .filter((job) => job.status === "open")
-    .map((job) => {
-      const company = companyOf(job.companyId);
-      if (!company || company.verificationStatus !== "verified") return null;
-      return {
-        ...job,
-        company: {
-          id: company.id,
-          name: company.name,
-          logoUrl: company.logoUrl,
-          verificationStatus: company.verificationStatus,
-        },
-      } satisfies JobWithCompany;
-    })
-    .filter((job): job is JobWithCompany => job != null)
-    .filter((job) => {
-      if (filters.technical && !job.isTechnical) return false;
-      if (filters.maxCost != null && job.tokenCost > filters.maxCost) return false;
-      if (q && !`${job.title} ${job.company.name}`.toLowerCase().includes(q)) return false;
-      return true;
-    })
-    .sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt));
+  const rows: JobWithCompany[] = [];
+  for (const job of db().jobs) {
+    if (job.status !== "open") continue;
+    const company = companyOf(job.companyId);
+    if (!company || company.verificationStatus !== "verified") continue;
+    if (filters.technical && !job.isTechnical) continue;
+    if (filters.maxCost != null && job.tokenCost > filters.maxCost) continue;
+    if (q && !`${job.title} ${company.name}`.toLowerCase().includes(q)) continue;
+    rows.push({
+      ...job,
+      company: {
+        id: company.id,
+        name: company.name,
+        logoUrl: company.logoUrl,
+        verificationStatus: company.verificationStatus,
+      },
+    });
+  }
+  rows.sort((a, b) => Date.parse(b.publishedAt ?? b.createdAt) - Date.parse(a.publishedAt ?? a.createdAt));
+  return rows;
 }
 
 /**
