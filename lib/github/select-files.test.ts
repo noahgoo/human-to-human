@@ -14,7 +14,9 @@ describe("selectReviewFiles", () => {
       { path: "tests/api.test.ts", type: "blob" },
       { path: "logo.png", type: "blob" },
     ]);
-    expect(selected[0]).toBe("tests/api.test.ts");
+    expect(selected[0]).toBe("src/server.ts");
+    expect(selected).toContain("tests/api.test.ts");
+    expect(selected).toContain("README.md");
     expect(selected.indexOf("src/server.ts")).toBeLessThan(selected.indexOf("README.md"));
     expect(selected).toContain(".github/workflows/ci.yml");
     expect(selected).toContain("infra/main.tf");
@@ -22,6 +24,22 @@ describe("selectReviewFiles", () => {
     expect(selected).not.toContain("node_modules/leftpad/index.js");
     expect(selected).not.toContain("package-lock.json");
     expect(selected).not.toContain("logo.png");
+  });
+
+  it("round-robins app, src, and supabase and keeps a README when there is room", () => {
+    const selected = selectReviewFiles(
+      [
+        { path: "app/a.ts", type: "blob" },
+        { path: "app/b.ts", type: "blob" },
+        { path: "src/c.ts", type: "blob" },
+        { path: "supabase/schema.sql", type: "blob" },
+        { path: "design/logo.tsx", type: "blob" },
+        { path: "starter-code/Main.java", type: "blob" },
+        { path: "README.md", type: "blob" },
+      ],
+      4,
+    );
+    expect(selected).toEqual(["app/a.ts", "src/c.ts", "supabase/schema.sql", "README.md"]);
   });
 });
 

@@ -10,6 +10,7 @@ function reviewWith(score: number): GithubReview {
     filesReviewed: 4,
     model: "test",
     overall: score,
+    gaps: "No schema, no tests, and no latency controls in the sample.",
     topics: REPO_TOPICS.map((topic) => ({
       id: topic.id,
       label: topic.label,
@@ -36,6 +37,7 @@ describe("recruiterRepoFromReview", () => {
     });
     expect(mapped.overall).toBe(8);
     expect(mapped.rationale.codeQuality).toContain("Standards & Patterns");
+    expect(mapped.gaps).toContain("No schema");
   });
 
   it("keeps a weak sample at the bottom of the 1–10 scale", () => {

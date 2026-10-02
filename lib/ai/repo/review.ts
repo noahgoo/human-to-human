@@ -35,8 +35,8 @@ export async function collectRepoSample(
 }
 
 export async function scoreRepoSample(login: string, files: ReviewFile[]): Promise<GithubReview> {
-  const subtopics = await requestRepoScores(formatEvidence(login, files));
-  const rolled = rollupTopicScores(subtopics);
+  const answer = await requestRepoScores(formatEvidence(login, files));
+  const rolled = rollupTopicScores(answer.subtopics);
   return {
     status: "succeeded",
     login,
@@ -45,6 +45,7 @@ export async function scoreRepoSample(login: string, files: ReviewFile[]): Promi
     model: repoReviewModel(),
     overall: rolled.overall,
     topics: rolled.topics,
+    gaps: answer.gaps.trim().slice(0, 700),
   };
 }
 

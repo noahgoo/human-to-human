@@ -197,7 +197,7 @@ export function JobForm(props: Props) {
                   <div>
                     <Label htmlFor="technical-role">Technical role</Label>
                     <p className="mt-1 text-small text-copy">
-                      Require a public GitHub repo. AI rates Data Architecture, Performance & Reliability, Deployment & Operations, Code Quality, and Team Topology (1–10).
+                      Require a public GitHub repo. AI rates Data Architecture, Performance & Reliability, Deployment & Operations, Code Quality, and Team Topology (1–100).
                     </p>
                   </div>
                 </div>
@@ -206,7 +206,7 @@ export function JobForm(props: Props) {
                     {CATEGORIES.map((category) => (
                       <li key={category} className="rounded-md border bg-card px-3 py-2 text-small">
                         {REPO_CATEGORY_LABEL[category]}
-                        <span className="mt-0.5 block text-code text-muted-foreground">1–10</span>
+                        <span className="mt-0.5 block text-code text-muted-foreground">1–100</span>
                       </li>
                     ))}
                   </ul>

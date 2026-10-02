@@ -71,6 +71,7 @@ export interface RepoEvaluation {
   scores: Record<RepoCategory, number> | null;
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
+  gaps?: string | null;
   repoUrl: string;
   repoFullName: string;
   commitSha: string | null;

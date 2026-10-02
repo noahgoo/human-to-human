@@ -83,7 +83,7 @@ export default async function ApplicantDetailPage({
       />
       <p className="text-small text-copy">{FAIRNESS_NOTICE}</p>
       <FitSection explanation={row.fit.explanation} requirements={row.fit.requirements} pending={row.rank.tier === 2} />
-      {detail.job.isTechnical && row.repo && <RepoScoreCard repo={row.repo} variant="full" />}
+      {detail.job.isTechnical && row.repo && <RepoScoreCard repo={row.repo} variant="full" revealOnClick />}
       <Timeline events={row.application.events} />
     </div>
   );

@@ -16,6 +16,7 @@ export function recruiterRepoFromReview(review: GithubReview): {
   scores: Record<RepoCategory, number>;
   overall: number;
   rationale: Partial<Record<RepoCategory, string>>;
+  gaps: string | null;
 } {
   const byId = new Map<string, GithubTopicScore["subtopics"][number]>(
     review.topics.flatMap((topic) => topic.subtopics.map((subtopic) => [subtopic.id, subtopic])),
@@ -37,7 +38,7 @@ export function recruiterRepoFromReview(review: GithubReview): {
         5) *
         100,
     ) / 100;
-  return { scores, overall, rationale };
+  return { scores, overall, rationale, gaps: review.gaps?.trim() || null };
 }
 
 function clamp10(score: number): number {

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { REPO_CATEGORY_LABEL } from "@/lib/copy";
 import { repoCategoryDisplayScore, repoOverallDisplayScore } from "@/lib/data/scoring";
 import type { EvaluationStatus, RepoCategory } from "@/lib/types";
@@ -12,6 +13,7 @@ export interface RepoScoreCardModel {
   scores: Record<RepoCategory, number> | null;
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
+  gaps?: string | null;
   repoFullName: string;
   repoUrl?: string | null;
   commitSha: string | null;
@@ -23,7 +25,15 @@ function scoreLabel(score: number) {
   return Number.isInteger(score) ? String(score) : score.toFixed(1);
 }
 
-export function RepoScoreCard({ repo, variant }: { repo: RepoScoreCardModel; variant: "compact" | "full" }) {
+export function RepoScoreCard({
+  repo,
+  variant,
+  revealOnClick = false,
+}: {
+  repo: RepoScoreCardModel;
+  variant: "compact" | "full";
+  revealOnClick?: boolean;
+}) {
   const pending = repo.status === "pending" || repo.status === "running";
   const failed = repo.status === "failed";
 
@@ -78,25 +88,29 @@ export function RepoScoreCard({ repo, variant }: { repo: RepoScoreCardModel; var
 
       {!pending && !failed && repo.scores && (
         <>
+          <p className="mb-2 text-small font-medium text-foreground">GitHub repo</p>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {CATEGORIES.map((category) => (
-              <div key={category} className="rounded-md bg-muted px-2 py-1.5">
-                <div className="text-small text-muted-foreground">{REPO_CATEGORY_LABEL[category]}</div>
-                <div className="tabular-nums text-foreground">
-                  {scoreLabel(repoCategoryDisplayScore(repo.scores![category]))} / 100
-                </div>
-              </div>
+              <ScoreCell
+                key={category}
+                category={category}
+                score={repoCategoryDisplayScore(repo.scores![category])}
+                comment={repo.rationale[category]}
+                paragraph={repo.gaps}
+                clickable={revealOnClick}
+              />
             ))}
           </div>
           {repo.overall != null && (
             <p className="mt-2 text-small text-copy">
               Average{" "}
               <span className="tabular-nums text-foreground">
-                {scoreLabel(repoOverallDisplayScore(repo.overall))} / 100
+                ({scoreLabel(repoOverallDisplayScore(repo.overall))}/100)
               </span>
             </p>
           )}
-          {variant === "full" && (
+          {repo.gaps && !revealOnClick && <p className="mt-3 text-body text-copy">{repo.gaps}</p>}
+          {variant === "full" && !revealOnClick && (
             <ul className="mt-4 space-y-3">
               {CATEGORIES.map((category) => (
                 <li key={category}>
@@ -109,5 +123,51 @@ export function RepoScoreCard({ repo, variant }: { repo: RepoScoreCardModel; var
         </>
       )}
     </div>
+  );
+}
+
+function ScoreCell({
+  category,
+  score,
+  comment,
+  paragraph,
+  clickable,
+}: {
+  category: RepoCategory;
+  score: number;
+  comment?: string;
+  paragraph?: string | null;
+  clickable: boolean;
+}) {
+  const label = REPO_CATEGORY_LABEL[category];
+  const note = comment?.trim();
+  const gaps = paragraph?.trim();
+  const body = (
+    <div className="text-small text-foreground">
+      {label}{" "}
+      <span className="tabular-nums text-muted-foreground">({scoreLabel(score)}/100)</span>
+    </div>
+  );
+  if (!clickable) {
+    return <div className="rounded-md bg-muted px-2 py-1.5">{body}</div>;
+  }
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="rounded-md bg-muted px-2 py-1.5 text-left outline-none hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50"
+          aria-label={`${label} review`}
+        >
+          {body}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-80">
+        <p className="text-small font-medium text-foreground">{label}</p>
+        {gaps && <p className="text-body text-copy">{gaps}</p>}
+        {note && note !== gaps && <p className="text-body text-copy">{note}</p>}
+        {!gaps && !note && <p className="text-body text-muted-foreground">No written review.</p>}
+      </PopoverContent>
+    </Popover>
   );
 }

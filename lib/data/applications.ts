@@ -10,6 +10,7 @@ export interface StoredRepoScore {
   scores: Record<RepoCategory, number> | null;
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
+  gaps?: string | null;
   repoFullName: string;
   repoUrl: string;
   commitSha: string | null;
@@ -98,6 +99,7 @@ function storedRepo(applicationId: string): StoredRepoScore | null {
     scores: raw.scores,
     overall: raw.overall,
     rationale: raw.rationale,
+    gaps: raw.gaps ?? null,
     repoFullName: raw.repoFullName,
     repoUrl: raw.repoUrl,
     commitSha: raw.commitSha,

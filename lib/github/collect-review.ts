@@ -25,7 +25,7 @@ export async function collectReviewFiles(
   for (const project of repos) {
     if (selected.length >= MAX_FILES) break;
     const tree = await fetchTree(login, project, fetchImpl);
-    for (const path of selectReviewFiles(tree, 8)) {
+    for (const path of selectReviewFiles(tree, 12)) {
       if (selected.length >= MAX_FILES) break;
       selected.push({ repo: project.name, path, branch: project.defaultBranch ?? "HEAD" });
     }

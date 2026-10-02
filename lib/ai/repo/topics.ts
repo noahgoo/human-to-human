@@ -135,6 +135,8 @@ export type GithubReview = {
   model: string;
   overall: number;
   topics: GithubTopicScore[];
+  /** Cons and gaps in data architecture, performance, and code quality. */
+  gaps?: string;
 };
 
 export function rollupTopicScores(

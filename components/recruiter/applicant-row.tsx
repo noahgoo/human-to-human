@@ -78,7 +78,7 @@ export function ApplicantRow({ row, showRank, href }: { row: RankedApplicant; sh
           />
           {row.repo && (
             <div className="mt-3">
-              <RepoScoreCard repo={row.repo} variant="compact" />
+              <RepoScoreCard repo={row.repo} variant="compact" revealOnClick />
             </div>
           )}
         </div>

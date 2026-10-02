@@ -241,6 +241,7 @@ function repoEvaluation(applicationId: string, repo: LoadedRepo, review: GithubR
       scores: mapped.scores,
       overall: mapped.overall,
       rationale: mapped.rationale,
+      gaps: mapped.gaps,
       failureCode: null,
     };
   }
@@ -250,6 +251,7 @@ function repoEvaluation(applicationId: string, repo: LoadedRepo, review: GithubR
     scores: null,
     overall: null,
     rationale: {},
+    gaps: null,
     failureCode: "review_failed",
   };
 }
