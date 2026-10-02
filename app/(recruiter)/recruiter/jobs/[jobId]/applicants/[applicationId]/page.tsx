@@ -7,6 +7,7 @@ import { FAIRNESS_NOTICE } from "@/lib/copy";
 import { applicantsQueryString, loadApplicantDetail, loadRecruiterJob, parseApplicantsQuery } from "@/lib/data/pipeline";
 import { ApplicantDecisionBar } from "@/components/recruiter/applicant-decision-bar";
 import { ApplicantDetailLayout } from "@/components/recruiter/applicant-detail-layout";
+import { FitScoreBreakdown } from "@/components/recruiter/fit-score-breakdown";
 import { RankBreakdown } from "@/components/recruiter/rank-breakdown";
 import { RepoScoreCard } from "@/components/recruiter/repo-score-card";
 import { ResumeViewer } from "@/components/recruiter/resume-viewer";
@@ -74,6 +75,11 @@ export default async function ApplicantDetailPage({
         githubOverall={row.repo?.status === "succeeded" ? row.repo.overall : null}
         repoStatus={row.repo?.status ?? null}
         position={row.rank.position}
+      />
+      <FitScoreBreakdown
+        fitScore={row.fit.score}
+        fitStatus={row.fit.status}
+        jev={row.fit.jev}
       />
       <p className="text-small text-copy">{FAIRNESS_NOTICE}</p>
       <FitSection explanation={row.fit.explanation} requirements={row.fit.requirements} pending={row.rank.tier === 2} />

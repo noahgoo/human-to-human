@@ -19,7 +19,7 @@ export const REPO_TOPICS = [
   },
   {
     id: "scalability",
-    label: "Scalability, Performance & Reliability",
+    label: "Performance & Reliability",
     subtopics: [
       {
         id: "throughputLatency",
@@ -43,7 +43,7 @@ export const REPO_TOPICS = [
   },
   {
     id: "codeQuality",
-    label: "Code Quality & Maintainability",
+    label: "Code Quality",
     subtopics: [
       {
         id: "standardsPatterns",
@@ -67,7 +67,7 @@ export const REPO_TOPICS = [
   },
   {
     id: "cicd",
-    label: "CI/CD, Deployment & Operations",
+    label: "Deployment & Operations",
     subtopics: [
       {
         id: "automationPipelines",
@@ -90,7 +90,7 @@ export const REPO_TOPICS = [
   },
   {
     id: "teamTopology",
-    label: "Team Topology & Governance",
+    label: "Team Topology",
     subtopics: [
       {
         id: "documentation",

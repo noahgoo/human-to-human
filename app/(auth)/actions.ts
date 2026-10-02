@@ -13,6 +13,7 @@ const COOKIE = { httpOnly: true, path: "/", sameSite: "lax" as const };
 const FALLBACK_HOME: Record<Exclude<DemoPersona, "none">, string> = {
   applicant: "/jobs",
   applicant_new: "/onboarding/applicant",
+  bobby: "/onboarding/applicant",
   recruiter: "/recruiter/jobs",
   recruiter_new: "/onboarding/recruiter",
   admin: "/admin/companies",

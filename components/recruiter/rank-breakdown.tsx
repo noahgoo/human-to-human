@@ -1,3 +1,4 @@
+import { repoOverallDisplayScore } from "@/lib/data/scoring";
 import type { EvaluationStatus } from "@/lib/types";
 
 function formatFit(score: number) {
@@ -32,8 +33,8 @@ export function RankBreakdown({
         ? "GitHub review unavailable: listed under Incomplete"
         : "Provisional: ranked below complete applicants until the GitHub review finishes.";
   } else if (isTechnical && score != null && fitScore != null && githubOverall != null) {
-    const scaled = ((githubOverall - 1) / 9) * 100;
-    body = `Rank score ${score.toFixed(2)} = 70% × fit ${formatFit(fitScore)} + 30% × GitHub ${scaled.toFixed(1)} (${githubOverall.toFixed(2)} / 10 scaled 1–10 → 0–100)`;
+    const githubDisplay = repoOverallDisplayScore(githubOverall);
+    body = `Rank score ${score.toFixed(2)} = 70% × fit ${formatFit(fitScore)} + 30% × GitHub ${githubDisplay} (repo review average / 100)`;
   } else if (score != null && fitScore != null) {
     body = `Rank score ${score.toFixed(2)} = fit score ${formatFit(fitScore)}`;
   }

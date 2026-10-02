@@ -21,7 +21,7 @@ import { JobPreviewCard } from "./job-preview-card";
 import { jobInputSchema, type JobInput } from "./job-schema";
 import { TokenCostSelector } from "./token-cost-selector";
 
-const CATEGORIES: RepoCategory[] = ["security", "organization", "performance", "testing"];
+const CATEGORIES: RepoCategory[] = ["dataArchitecture", "performance", "deployment", "codeQuality", "teamTopology"];
 const WORK_MODES: WorkMode[] = ["remote", "hybrid", "onsite"];
 const LOCK_NOTE = "Cost is locked once candidates have applied. Close this job and post a new one to change it.";
 
@@ -197,7 +197,7 @@ export function JobForm(props: Props) {
                   <div>
                     <Label htmlFor="technical-role">Technical role</Label>
                     <p className="mt-1 text-small text-copy">
-                      Require a public GitHub repo. AI rates Security, Organization, Performance, Testing (1–10). Applicants don&apos;t see ratings.
+                      Require a public GitHub repo. AI rates Data Architecture, Performance & Reliability, Deployment & Operations, Code Quality, and Team Topology (1–10).
                     </p>
                   </div>
                 </div>

@@ -27,14 +27,20 @@ function reviewWith(score: number): GithubReview {
 describe("recruiterRepoFromReview", () => {
   it("scales 1–100 topic scores onto the 1–10 recruiter categories", () => {
     const mapped = recruiterRepoFromReview(reviewWith(84));
-    expect(mapped.scores).toEqual({ security: 8, organization: 8, performance: 8, testing: 8 });
+    expect(mapped.scores).toEqual({
+      dataArchitecture: 8,
+      performance: 8,
+      deployment: 8,
+      codeQuality: 8,
+      teamTopology: 8,
+    });
     expect(mapped.overall).toBe(8);
-    expect(mapped.rationale.testing).toContain("Test Coverage");
+    expect(mapped.rationale.codeQuality).toContain("Standards & Patterns");
   });
 
   it("keeps a weak sample at the bottom of the 1–10 scale", () => {
     const mapped = recruiterRepoFromReview(reviewWith(1));
-    expect(mapped.scores.security).toBe(1);
+    expect(mapped.scores.dataArchitecture).toBe(1);
     expect(mapped.overall).toBe(1);
   });
 });

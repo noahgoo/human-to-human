@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { DEMO_ROLE_COOKIE } from "@/lib/auth/session";
 
-// /demo?role=applicant|applicant_new|recruiter|recruiter_new|admin|none&next=/path
+// /demo?role=applicant|applicant_new|bobby|recruiter|recruiter_new|admin|none&next=/path
 export async function GET(req: NextRequest) {
   const role = req.nextUrl.searchParams.get("role") ?? "applicant";
   const next = req.nextUrl.searchParams.get("next") ?? "/";

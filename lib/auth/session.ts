@@ -4,6 +4,7 @@
 // The demo cookie `np_demo_role` selects the persona:
 //   applicant      Jordan Lee, onboarded, has applications
 //   applicant_new  fresh applicant, goes through /onboarding/applicant
+//   bobby          Bobby, fresh applicant, goes through /onboarding/applicant
 //   recruiter      Priya Shah, verified recruiter at Lumen Labs
 //   recruiter_new  fresh recruiter, goes through /onboarding/recruiter
 //   admin          platform admin
@@ -15,6 +16,7 @@ import type { Role, VerificationStatus } from "@/lib/types";
 import {
   db,
   DEMO_APPLICANT_ID,
+  DEMO_BOBBY_ID,
   DEMO_NEW_APPLICANT_ID,
   DEMO_NEW_RECRUITER_ID,
   DEMO_RECRUITER_ID,
@@ -34,11 +36,12 @@ export interface AppSession {
 }
 
 export const DEMO_ROLE_COOKIE = "np_demo_role";
-export type DemoPersona = "applicant" | "applicant_new" | "recruiter" | "recruiter_new" | "admin" | "none";
+export type DemoPersona = "applicant" | "applicant_new" | "bobby" | "recruiter" | "recruiter_new" | "admin" | "none";
 
 const PERSONAS: Record<Exclude<DemoPersona, "none">, { userId: string; email: string; fullName: string; role: Role | null }> = {
   applicant: { userId: DEMO_APPLICANT_ID, email: "jordan@example.com", fullName: "Jordan Lee", role: "applicant" },
   applicant_new: { userId: DEMO_NEW_APPLICANT_ID, email: "casey.new@example.com", fullName: "Casey Rivera", role: "applicant" },
+  bobby: { userId: DEMO_BOBBY_ID, email: "bobby@example.com", fullName: "Bobby", role: "applicant" },
   recruiter: { userId: DEMO_RECRUITER_ID, email: "priya@lumenlabs.dev", fullName: "Priya Shah", role: "recruiter" },
   recruiter_new: { userId: DEMO_NEW_RECRUITER_ID, email: "sam@brightforge.io", fullName: "Sam Okoro", role: "recruiter" },
   admin: { userId: "user-admin-demo", email: "admin@nexuspulse.dev", fullName: "Admin", role: "admin" },

@@ -1,6 +1,9 @@
 import "server-only";
-import type { ApplicationStatus, EvaluationStatus, FitEvaluation, RepoCategory, TokenCost, WorkMode } from "@/lib/types";
+import type { ApplicationStatus, EvaluationStatus, RepoCategory, TokenCost, WorkMode } from "@/lib/types";
 import { db } from "@/lib/mock/db";
+import { jevScoresFromFit, type SavedJevScores } from "@/lib/data/scoring";
+
+export type { SavedJevScores };
 
 export interface StoredRepoScore {
   status: EvaluationStatus;
@@ -8,16 +11,10 @@ export interface StoredRepoScore {
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
   repoFullName: string;
+  repoUrl: string;
   commitSha: string | null;
   flags: string[];
   failureCode: string | null;
-}
-
-export interface SavedJevScores {
-  richMedia: number | null;
-  profile: number | null;
-  resume: number | null;
-  average: number | null;
 }
 
 export interface MyApplicationListItem {
@@ -87,33 +84,10 @@ export async function getMyApplication(applicantId: string, applicationId: strin
     tokenCost: application.tokenCost,
     isTechnical: Boolean(job?.isTechnical),
     githubRepoUrl: application.githubRepoUrl,
-    jev: jevScores(store.fitEvaluations.find((item) => item.id === application.fitEvaluationId)),
+    jev: jevScoresFromFit(store.fitEvaluations.find((item) => item.id === application.fitEvaluationId)),
     repo: job?.isTechnical ? storedRepo(application.id) : null,
     events: application.events.map((event) => ({ toStatus: event.toStatus, at: event.at })),
   };
-}
-
-const JEV_LABEL = {
-  richMedia: "LinkedIn rich media",
-  profile: "LinkedIn profile",
-  resume: "Resume",
-} as const;
-
-function jevScores(fit: FitEvaluation | undefined): SavedJevScores {
-  const saved = fit?.sourceScores;
-  const succeeded = fit?.status === "succeeded";
-  return {
-    richMedia: saved?.richMedia ?? scoreFromEvidence(fit, JEV_LABEL.richMedia),
-    profile: saved?.profile ?? scoreFromEvidence(fit, JEV_LABEL.profile),
-    resume: saved?.resume ?? scoreFromEvidence(fit, JEV_LABEL.resume),
-    average: succeeded ? (fit?.confidenceScore ?? null) : null,
-  };
-}
-
-function scoreFromEvidence(fit: FitEvaluation | undefined, label: string): number | null {
-  const evidence = fit?.requirements.find((item) => item.requirement === label)?.evidence;
-  const match = evidence?.match(/Jev score (\d+)/);
-  return match ? Number(match[1]) : null;
 }
 
 function storedRepo(applicationId: string): StoredRepoScore | null {
@@ -125,6 +99,7 @@ function storedRepo(applicationId: string): StoredRepoScore | null {
     overall: raw.overall,
     rationale: raw.rationale,
     repoFullName: raw.repoFullName,
+    repoUrl: raw.repoUrl,
     commitSha: raw.commitSha,
     flags: raw.flags,
     failureCode: raw.failureCode,

@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { REPO_CATEGORY_LABEL } from "@/lib/copy";
+import { repoCategoryDisplayScore, repoOverallDisplayScore } from "@/lib/data/scoring";
 import type { EvaluationStatus, RepoCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const CATEGORIES: RepoCategory[] = ["security", "organization", "performance", "testing"];
+const CATEGORIES: RepoCategory[] = ["dataArchitecture", "performance", "deployment", "codeQuality", "teamTopology"];
 
 export interface RepoScoreCardModel {
   status: EvaluationStatus;
@@ -11,6 +13,7 @@ export interface RepoScoreCardModel {
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
   repoFullName: string;
+  repoUrl?: string | null;
   commitSha: string | null;
   flags: string[];
   failureCode: string | null;
@@ -26,9 +29,28 @@ export function RepoScoreCard({ repo, variant }: { repo: RepoScoreCardModel; var
 
   return (
     <div className={cn(variant === "full" && "rounded-xl border bg-card p-4 shadow-1")}>
+      {variant === "compact" && repo.repoUrl && (
+        <p className="mb-2 font-mono text-code text-foreground">
+          <Link href={repo.repoUrl} className="text-link hover:underline" target="_blank" rel="noopener noreferrer">
+            {repo.repoFullName}
+          </Link>
+        </p>
+      )}
+
       {variant === "full" && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <p className="font-mono text-code text-foreground">{repo.repoFullName}</p>
+          {repo.repoUrl ? (
+            <Link
+              href={repo.repoUrl}
+              className="font-mono text-code text-link hover:underline"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {repo.repoFullName}
+            </Link>
+          ) : (
+            <p className="font-mono text-code text-foreground">{repo.repoFullName}</p>
+          )}
           {repo.commitSha && (
             <span className="font-mono text-code text-muted-foreground">{repo.commitSha.slice(0, 7)}</span>
           )}
@@ -56,19 +78,22 @@ export function RepoScoreCard({ repo, variant }: { repo: RepoScoreCardModel; var
 
       {!pending && !failed && repo.scores && (
         <>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {CATEGORIES.map((category) => (
               <div key={category} className="rounded-md bg-muted px-2 py-1.5">
                 <div className="text-small text-muted-foreground">{REPO_CATEGORY_LABEL[category]}</div>
                 <div className="tabular-nums text-foreground">
-                  {scoreLabel(repo.scores![category])} / 10
+                  {scoreLabel(repoCategoryDisplayScore(repo.scores![category]))} / 100
                 </div>
               </div>
             ))}
           </div>
           {repo.overall != null && (
             <p className="mt-2 text-small text-copy">
-              Average <span className="tabular-nums text-foreground">{repo.overall.toFixed(2)} / 10</span>
+              Average{" "}
+              <span className="tabular-nums text-foreground">
+                {scoreLabel(repoOverallDisplayScore(repo.overall))} / 100
+              </span>
             </p>
           )}
           {variant === "full" && (

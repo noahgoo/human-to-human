@@ -5,21 +5,33 @@ import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 import { toast } from "sonner";
 import type { LinkedInImportInfo } from "@/lib/types";
-import { clearLinkedIn, saveLinkedInImport } from "@/app/(applicant)/profile/actions";
+import { clearLinkedIn, importLinkedInExport } from "@/app/(applicant)/profile/actions";
 import type { UploadGate } from "@/components/onboarding/readiness";
+import { ONBOARDING_LINKEDIN_FILES, filesPresentLabel } from "@/lib/linkedin/onboarding-files";
 import { FileDropzone, type DropzonePhase } from "./file-dropzone";
 import { formatImportCounts } from "./import-summary";
-import { inspectLinkedInFiles, LINKEDIN_FILES, type LinkedInInspection } from "./linkedin-inspect";
-import { animateProgress, isAbortError, sleep } from "./simulate";
+import {
+  inspectOnboardingLinkedInFiles,
+  type OnboardingLinkedInInspection,
+} from "./onboarding-linkedin-inspect";
+import { isAbortError } from "./simulate";
 
 const ZIP_LIMIT = 50 * 1024 * 1024;
 const CSV_LIMIT = 20 * 1024 * 1024;
 
-function inspectionFrom(info: LinkedInImportInfo): LinkedInInspection {
+function inspectionFrom(info: LinkedInImportInfo): OnboardingLinkedInInspection {
   return {
-    filesPresent: info.filesPresent,
-    counts: info.counts,
+    filesPresent: info.filesPresent.filter((f): f is (typeof ONBOARDING_LINKEDIN_FILES)[number] =>
+      (ONBOARDING_LINKEDIN_FILES as readonly string[]).includes(f),
+    ),
+    counts: {
+      connections: info.counts.connections,
+      companies: info.counts.companies,
+      positions: info.counts.positions,
+      richMedia: info.counts.richMedia ?? 0,
+    },
     displayNames: ["LinkedIn export"],
+    allRequiredPresent: true,
   };
 }
 
@@ -37,14 +49,23 @@ export function LinkedInImportCard({
   const [committed, setCommitted] = useState(initial);
   const committedRef = useRef(committed);
   committedRef.current = committed;
-  const [inspection, setInspection] = useState<LinkedInInspection | null>(initial ? inspectionFrom(initial) : null);
+  const [inspection, setInspection] = useState<OnboardingLinkedInInspection | null>(
+    initial ? inspectionFrom(initial) : null,
+  );
   const [phase, setPhase] = useState<DropzonePhase>(initial?.status === "succeeded" ? "done" : "idle");
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
 
   const filesPresent = inspection?.filesPresent ?? [];
-  const summary = inspection ? formatImportCounts(inspection.counts) : undefined;
+  const summary = inspection
+    ? formatImportCounts({
+        connections: inspection.counts.connections,
+        companies: inspection.counts.companies,
+        positions: inspection.counts.positions,
+        richMedia: inspection.counts.richMedia,
+      })
+    : undefined;
   const gate: UploadGate =
     phase === "uploading"
       ? "uploading"
@@ -68,23 +89,41 @@ export function LinkedInImportCard({
     abortRef.current = controller;
     setError(null);
     try {
-      const next = await inspectLinkedInFiles(files);
+      const next = await inspectOnboardingLinkedInFiles(files);
       if (controller.signal.aborted) return;
       setInspection(next);
+      if (!next.allRequiredPresent) {
+        toast.message("Missing files", {
+          description: "Upload Profile, Positions, Connections, and Rich_Media before we can save to your account.",
+        });
+        setPhase("error");
+        setError("Include all four CSV files (or a ZIP that contains them).");
+        return;
+      }
       setPhase("uploading");
-      setProgress(0);
-      await animateProgress(controller.signal, setProgress, 1500);
+      setProgress(25);
+      const formData = new FormData();
+      for (const file of files) formData.append("files", file);
       if (controller.signal.aborted) return;
       setPhase("processing");
-      await sleep(2000, controller.signal);
-      const saved = await saveLinkedInImport({ filesPresent: next.filesPresent, counts: next.counts });
+      setProgress(60);
+      const saved = await importLinkedInExport(formData);
       if (controller.signal.aborted) return;
       if (!saved.ok) {
         restoreOrFail(saved.error.message);
         return;
       }
       setCommitted(saved.data);
-      setInspection({ ...next, displayNames: next.displayNames });
+      setInspection({
+        ...next,
+        counts: {
+          connections: saved.data.counts.connections,
+          companies: saved.data.counts.companies,
+          positions: saved.data.counts.positions,
+          richMedia: saved.data.counts.richMedia ?? next.counts.richMedia,
+        },
+      });
+      setProgress(100);
       setPhase("done");
       router.refresh();
     } catch (caught) {
@@ -136,12 +175,24 @@ export function LinkedInImportCard({
           <Users className="size-4" aria-hidden />
         </span>
         <div>
-          <h2 className="text-body font-semibold text-foreground">Import your LinkedIn export</h2>
+          <h2 className="text-body font-semibold text-foreground">Import your LinkedIn data</h2>
           <p className="mt-0.5 text-small text-muted-foreground">
-            A ZIP, or any of Profile, Positions, Skills, Education, and Connections.
+            Upload Profile, Positions, Connections, and Rich_Media from your LinkedIn export (ZIP or four CSVs).
           </p>
         </div>
       </div>
+
+      <ol className="list-decimal space-y-1 pl-5 text-small text-copy">
+        <li>
+          On LinkedIn, open <strong className="font-medium text-foreground">Settings &amp; Privacy → Data privacy</strong>.
+        </li>
+        <li>
+          Choose <strong className="font-medium text-foreground">Get a copy of your data</strong> and request a{" "}
+          <strong className="font-medium text-foreground">Basic LinkedIn data export</strong> (or select Profile,
+          Positions, Connections, and rich media). LinkedIn usually emails a ZIP in about 10 minutes.
+        </li>
+        <li>Upload that ZIP here, or upload the four CSV files from inside the folder.</li>
+      </ol>
 
       <FileDropzone
         accept={[".zip", ".csv"]}
@@ -157,21 +208,21 @@ export function LinkedInImportCard({
         disabled={removing}
         idleTitle="Drag and drop your export"
         idleHint="ZIP up to 50 MB, or CSV files up to 20 MB each"
-        processingLabel="Parsing your export…"
+        processingLabel="Saving to your account…"
         doneAnnouncement={summary}
         replaceLabel={phase === "error" ? "Retry upload" : "Replace"}
       />
 
       {filesPresent.length > 0 && (
         <ul className="grid grid-cols-2 gap-1.5" aria-label="LinkedIn files">
-          {LINKEDIN_FILES.map((name) => {
+          {ONBOARDING_LINKEDIN_FILES.map((name) => {
             const present = filesPresent.includes(name);
             return (
               <li key={name} className="flex items-center gap-2 text-small">
                 <span aria-hidden className={present ? "text-success" : "text-muted-foreground"}>
                   {present ? "✓" : "–"}
                 </span>
-                <span className={present ? "text-foreground" : "text-muted-foreground"}>{name}.csv</span>
+                <span className={present ? "text-foreground" : "text-muted-foreground"}>{filesPresentLabel(name)}</span>
                 <span className="sr-only">{present ? "present" : "missing"}</span>
               </li>
             );
@@ -179,19 +230,12 @@ export function LinkedInImportCard({
         </ul>
       )}
 
-      {filesPresent.length > 0 && !filesPresent.includes("Connections") && (
-        <p className="rounded-md bg-warning-subtle px-3 py-2 text-small text-warning-fg" role="status">
-          Without Connections.csv we can&apos;t show who you know at companies.
-        </p>
-      )}
-
       <div className="space-y-2 border-t pt-3 text-small text-copy">
         <p>
-          LinkedIn → Settings → Data privacy → Get a copy of your data. Select Connections, Positions, Profile, Skills
-          and Education. LinkedIn usually emails it within about 10 minutes; you can upload your resume meanwhile.
+          We store connection names, companies, and titles only — never emails or profile URLs — and we don&apos;t show
+          connections to recruiters.
         </p>
-        <p>We store your connections&apos; names, companies and titles only, never their emails, and never show them to recruiters.</p>
-        <p>Signing in with LinkedIn does not import your data. Upload your export here.</p>
+        <p>Signing in with LinkedIn does not import your data. You need to upload your export here.</p>
       </div>
     </section>
   );

@@ -36,8 +36,9 @@ export function errorMessage(code: string): string {
 export const WORK_MODE_LABEL = { remote: "Remote", hybrid: "Hybrid", onsite: "On-site" } as const;
 
 export const REPO_CATEGORY_LABEL = {
-  security: "Security",
-  organization: "Organization",
-  performance: "Performance",
-  testing: "Testing",
+  dataArchitecture: "Data Architecture",
+  performance: "Performance & Reliability",
+  deployment: "Deployment & Operations",
+  codeQuality: "Code Quality",
+  teamTopology: "Team Topology",
 } as const;

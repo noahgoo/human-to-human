@@ -144,3 +144,47 @@ export async function savePreferences(input: {
   revalidateProfile();
   return { ok: true, data: next };
 }
+
+export async function importLinkedInExport(formData: FormData): Promise<ActionResult<LinkedInImportInfo>> {
+  const session = await requireApplicant();
+  const profile = ensureApplicant(session);
+  const files = formData.getAll("files").filter((v): v is File => v instanceof File);
+  if (files.length === 0) {
+    return { ok: false, error: { code: "VALIDATION_FAILED", message: "Choose your LinkedIn export files." } };
+  }
+  try {
+    const { isSupabaseConfigured } = await import("@/lib/supabase/config");
+    if (!isSupabaseConfigured()) {
+      return {
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "LinkedIn import to the database requires Supabase. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SECRET_KEY.",
+        },
+      };
+    }
+    const { extractOnboardingCsvs } = await import("@/lib/linkedin/extract-csvs");
+    const { resolveSupabaseApplicantId } = await import("@/lib/linkedin/resolve-applicant-id");
+    const { persistLinkedInOnboardingImport } = await import("@/lib/linkedin/persist-import");
+    const applicantUuid = await resolveSupabaseApplicantId(session.email);
+    if (!applicantUuid) {
+      return {
+        ok: false,
+        error: {
+          code: "VALIDATION_FAILED",
+          message:
+            "No Supabase profile matches your sign-in email. Use an account that exists in Supabase, or add your email to profiles.",
+        },
+      };
+    }
+    const csvs = await extractOnboardingCsvs(files);
+    const source = files.some((f) => f.name.toLowerCase().endsWith(".zip")) ? "zip" : "csv";
+    const info = await persistLinkedInOnboardingImport(applicantUuid, csvs, source);
+    profile.linkedin = info;
+    revalidateProfile();
+    return { ok: true, data: info };
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : "We couldn't import that export.";
+    return { ok: false, error: { code: "VALIDATION_FAILED", message } };
+  }
+}

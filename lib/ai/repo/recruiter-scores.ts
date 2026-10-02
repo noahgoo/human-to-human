@@ -2,19 +2,14 @@ import type { GithubReview, GithubTopicScore } from "@/lib/ai/repo/topics";
 import type { RepoCategory } from "@/lib/types";
 
 const CATEGORY_SUBTOPICS: Record<RepoCategory, string[]> = {
-  security: ["consistencyCompliance"],
-  organization: ["standardsPatterns", "documentation", "onboardingOwnership", "dataFlowStorage", "technicalDebt"],
-  performance: [
-    "throughputLatency",
-    "highAvailability",
-    "resourceOptimization",
-    "infrastructureAsCode",
-    "observabilityMonitoring",
-  ],
-  testing: ["testCoverage", "automationPipelines"],
+  dataArchitecture: ["dataFlowStorage", "consistencyCompliance"],
+  performance: ["throughputLatency", "highAvailability", "resourceOptimization"],
+  deployment: ["automationPipelines", "observabilityMonitoring", "infrastructureAsCode"],
+  codeQuality: ["standardsPatterns", "testCoverage", "technicalDebt"],
+  teamTopology: ["documentation", "onboardingOwnership"],
 };
 
-const CATEGORIES: RepoCategory[] = ["security", "organization", "performance", "testing"];
+const CATEGORIES: RepoCategory[] = ["dataArchitecture", "performance", "deployment", "codeQuality", "teamTopology"];
 
 /** Maps the 1–100 topic review onto the recruiter categories, which are 1–10. */
 export function recruiterRepoFromReview(review: GithubReview): {
@@ -36,7 +31,12 @@ export function recruiterRepoFromReview(review: GithubReview): {
     const sentence = items.map((item) => item.evidence.trim()).find(Boolean);
     if (sentence) rationale[category] = sentence;
   }
-  const overall = Math.round(((scores.security + scores.organization + scores.performance + scores.testing) / 4) * 100) / 100;
+  const overall =
+    Math.round(
+      ((scores.dataArchitecture + scores.performance + scores.deployment + scores.codeQuality + scores.teamTopology) /
+        5) *
+        100,
+    ) / 100;
   return { scores, overall, rationale };
 }
 

@@ -1,5 +1,7 @@
 import "server-only";
 import { db } from "@/lib/mock/db";
+import { loadPipelineRowsFromSupabase } from "@/lib/data/pipeline-supabase";
+import { jevScoresFromFit } from "@/lib/data/scoring";
 import { rankScore } from "@/lib/ranking/bands";
 import type {
   Application,
@@ -21,6 +23,7 @@ export interface RecruiterRepo {
   overall: number | null;
   rationale: Partial<Record<RepoCategory, string>>;
   repoFullName: string;
+  repoUrl: string | null;
   commitSha: string | null;
   flags: string[];
   failureCode: string | null;
@@ -39,6 +42,11 @@ export interface RankedApplicant {
     status: EvaluationStatus | null;
     explanation: string | null;
     requirements: FitRequirement[];
+    jev: {
+      richMedia: number | null;
+      profile: number | null;
+      resume: number | null;
+    };
   };
   repo: RecruiterRepo | null;
   rank: {
@@ -103,7 +111,7 @@ const SORTS: PipelineSort[] = ["rank", "confidence", "github", "newest", "oldest
 
 interface Scored extends RankedApplicant {
   confidence: number | null;
-  security: number | null;
+  codeQuality: number | null;
   githubOverall: number | null;
   githubSucceeded: boolean;
 }
@@ -159,8 +167,8 @@ function compareRank(a: Scored, b: Scored) {
   if (byScore !== 0) return byScore;
   const byConfidence = (b.confidence ?? -1) - (a.confidence ?? -1);
   if (byConfidence !== 0) return byConfidence;
-  const bySecurity = (b.security ?? -1) - (a.security ?? -1);
-  if (bySecurity !== 0) return bySecurity;
+  const byCodeQuality = (b.codeQuality ?? -1) - (a.codeQuality ?? -1);
+  if (byCodeQuality !== 0) return byCodeQuality;
   if (a.application.submittedAt !== b.application.submittedAt) {
     return a.application.submittedAt < b.application.submittedAt ? -1 : 1;
   }
@@ -219,11 +227,17 @@ function buildRows(job: Job): Scored[] {
         ? store.fitEvaluations.find((item) => item.id === application.fitEvaluationId)
         : undefined;
       const fitSucceeded = fitEval?.status === "succeeded" && fitEval.confidenceScore != null;
+      const jev = jevScoresFromFit(fitEval);
       const fit = {
         score: fitSucceeded ? fitEval.confidenceScore : null,
         status: fitEval?.status ?? null,
         explanation: fitSucceeded ? fitEval.explanation : null,
         requirements: fitSucceeded ? fitEval.requirements : [],
+        jev: {
+          richMedia: jev.richMedia,
+          profile: jev.profile,
+          resume: jev.resume,
+        },
       };
 
       let repo: RecruiterRepo | null = null;
@@ -236,6 +250,7 @@ function buildRows(job: Job): Scored[] {
               overall: raw.overall,
               rationale: raw.rationale,
               repoFullName: raw.repoFullName,
+              repoUrl: raw.repoUrl,
               commitSha: raw.commitSha,
               flags: raw.flags,
               failureCode: raw.failureCode,
@@ -246,6 +261,7 @@ function buildRows(job: Job): Scored[] {
               overall: null,
               rationale: {},
               repoFullName: application.githubRepoUrl?.replace(/^https:\/\/github.com\//, "") ?? "Repository",
+              repoUrl: application.githubRepoUrl,
               commitSha: null,
               flags: [],
               failureCode: null,
@@ -274,7 +290,7 @@ function buildRows(job: Job): Scored[] {
         repo,
         rank: { tier, score, position: null },
         confidence: fit.score,
-        security: repo?.scores?.security ?? null,
+        codeQuality: repo?.scores?.codeQuality ?? null,
         githubOverall: githubSucceeded ? repo?.overall ?? null : null,
         githubSucceeded,
       };
@@ -348,6 +364,7 @@ export async function loadApplicantsPage(
 ): Promise<ApplicantsPageData | null> {
   const job = findJob(jobId, companyId);
   if (!job) return null;
+  await loadPipelineRowsFromSupabase(jobId, companyId);
   const all = buildRows(job);
   const sort = effectiveSort(job, query.sort);
   const filtered = all.filter((row) => passesFilters(row, query)).sort(compareApplicants(sort));

@@ -9,7 +9,7 @@ export type EvaluationStatus = "pending" | "running" | "succeeded" | "failed";
 export type WorkMode = "remote" | "hybrid" | "onsite";
 export type TokenCost = 1 | 2 | 3;
 export type FitBand = "strong" | "good" | "moderate" | "limited";
-export type RepoCategory = "security" | "organization" | "performance" | "testing";
+export type RepoCategory = "dataArchitecture" | "performance" | "deployment" | "codeQuality" | "teamTopology";
 export type ParseStatus = "pending" | "running" | "succeeded" | "failed";
 
 export interface Company {
@@ -110,8 +110,8 @@ export interface ResumeInfo {
 export interface LinkedInImportInfo {
   id: string;
   status: ParseStatus;
-  filesPresent: Array<"Profile" | "Positions" | "Skills" | "Education" | "Connections">;
-  counts: { connections: number; companies: number; positions: number; skills: number; education: number };
+  filesPresent: Array<"Profile" | "Positions" | "Skills" | "Education" | "Connections" | "Rich_Media">;
+  counts: { connections: number; companies: number; positions: number; skills: number; education: number; richMedia?: number };
   /** LinkedIn Profile.csv, used by the Jev fit compare. */
   profileCsv?: string;
   /** LinkedIn Rich_Media.csv, used by the Jev fit compare. */

@@ -44,6 +44,7 @@ export interface MockDb {
 
 export const DEMO_NEW_APPLICANT_ID = "user-applicant-new";
 export const DEMO_NEW_RECRUITER_ID = "user-recruiter-new";
+export const DEMO_BOBBY_ID = "user-applicant-bobby";
 
 const now = Date.now();
 const daysAgo = (d: number) => new Date(now - d * 86_400_000).toISOString();
@@ -174,6 +175,9 @@ function seed(): MockDb {
     const status = f.status ?? "submitted";
     const submittedAt = hoursAgo(6 + i * 9);
     if (f.conf != null) {
+      const richMedia = Math.min(100, Math.max(0, f.conf + ((i % 3) - 1) * 4));
+      const profile = Math.min(100, Math.max(0, f.conf - (i % 2) * 5));
+      const resume = Math.min(100, Math.max(0, f.conf + 3));
       fitEvaluations.push({
         id: fitId,
         jobId: "job-lumen-infra",
@@ -181,6 +185,7 @@ function seed(): MockDb {
         status: "succeeded",
         confidenceScore: f.conf,
         band: bandFor(f.conf),
+        sourceScores: { richMedia, profile, resume },
         explanation: `${applicant.fullName.split(" ")[0]} has ${f.conf >= 80 ? "strong" : f.conf >= 60 ? "partial" : "limited"} overlap with the distributed-systems and Kubernetes requirements. ${f.conf >= 70 ? "Production Go experience is clearly evidenced." : "Go or Rust in production is not clearly evidenced."}`,
         requirements: [
           { requirement: "7+ years building distributed systems", met: f.conf >= 80 ? "yes" : "partial", evidence: "Resume: backend and infrastructure roles" },
@@ -207,20 +212,29 @@ function seed(): MockDb {
       events,
     });
     const scores = f.scores
-      ? { security: f.scores[0], organization: f.scores[1], performance: f.scores[2], testing: f.scores[3] }
+      ? {
+          dataArchitecture: f.scores[0],
+          performance: f.scores[1],
+          deployment: f.scores[2],
+          codeQuality: f.scores[3],
+          teamTopology: Math.round((f.scores[0] + f.scores[1] + f.scores[2] + f.scores[3]) / 4),
+        }
       : null;
     repoEvaluations.push({
       id: `repo-infra-${i + 1}`,
       applicationId: appId,
       status: f.repo === "ok" ? "succeeded" : f.repo === "pending" ? "running" : "failed",
       scores,
-      overall: scores ? (scores.security + scores.organization + scores.performance + scores.testing) / 4 : null,
+      overall: scores
+        ? (scores.dataArchitecture + scores.performance + scores.deployment + scores.codeQuality + scores.teamTopology) / 5
+        : null,
       rationale: scores
         ? {
-            security: "Secrets are loaded from env; input validation present on HTTP handlers.",
-            organization: "Clear package boundaries (cmd/, internal/, pkg/).",
+            dataArchitecture: "SQL storage and explicit data flow between services.",
             performance: "Uses connection pooling and bounded worker pools.",
-            testing: scores.testing >= 6 ? "Table-driven unit tests cover core packages." : "Few tests; no CI configuration found.",
+            deployment: "CI workflow and infrastructure config are present.",
+            codeQuality: scores.codeQuality >= 6 ? "Table-driven unit tests cover core packages." : "Few tests; no CI configuration found.",
+            teamTopology: "Setup notes and package boundaries show how the code is owned.",
           }
         : {},
       repoUrl,

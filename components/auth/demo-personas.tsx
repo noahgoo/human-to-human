@@ -3,6 +3,7 @@ import Link from "next/link";
 const PERSONAS = [
   { href: "/demo?role=applicant", label: "Jordan, applicant" },
   { href: "/demo?role=applicant_new", label: "Casey, new applicant (onboarding)" },
+  { href: "/demo?role=bobby", label: "Bobby, onboarding" },
   { href: "/demo?role=recruiter", label: "Priya, verified recruiter" },
   { href: "/demo?role=recruiter_new", label: "Sam, new recruiter (onboarding)" },
   { href: "/demo?role=admin", label: "Admin" },

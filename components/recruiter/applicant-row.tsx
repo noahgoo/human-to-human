@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { formatCredits } from "@/lib/copy";
 import type { RankedApplicant } from "@/lib/data/pipeline";
+import { FitScoreBreakdown } from "./fit-score-breakdown";
 import { RepoScoreCard } from "./repo-score-card";
 import { StatusActions, useApplicationStatus } from "./status-actions";
 
@@ -69,6 +70,12 @@ export function ApplicantRow({ row, showRank, href }: { row: RankedApplicant; sh
               {caption}
             </p>
           )}
+          <FitScoreBreakdown
+            fitScore={row.fit.score}
+            fitStatus={row.fit.status}
+            jev={row.fit.jev}
+            compact
+          />
           {row.repo && (
             <div className="mt-3">
               <RepoScoreCard repo={row.repo} variant="compact" />
