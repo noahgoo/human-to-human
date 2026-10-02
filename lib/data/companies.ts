@@ -2,27 +2,6 @@ import "server-only";
 import type { Company, VerificationStatus } from "@/lib/types";
 import { db, delay } from "@/lib/mock/db";
 
-const FREE_MAIL_DOMAINS = new Set([
-  "gmail.com",
-  "googlemail.com",
-  "yahoo.com",
-  "yahoo.co.uk",
-  "yahoo.co.jp",
-  "ymail.com",
-  "hotmail.com",
-  "outlook.com",
-  "live.com",
-  "msn.com",
-  "icloud.com",
-  "me.com",
-  "mac.com",
-  "proton.me",
-  "protonmail.com",
-  "pm.me",
-  "aol.com",
-  "aim.com",
-]);
-
 export type WorkEmailKind = "free_mail" | "has_recruiter" | "magic_link" | "admin_review" | "invalid_website";
 
 export interface WorkEmailInspection {
@@ -71,7 +50,7 @@ function domainsMatch(emailHost: string, siteHost: string): boolean {
 }
 
 export function isFreeMailDomain(domain: string): boolean {
-  return FREE_MAIL_DOMAINS.has(domain);
+  return db().blockedEmailDomains.includes(domain);
 }
 
 /** Live hint for recruiter onboarding. Does not write. */

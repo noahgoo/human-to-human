@@ -3,7 +3,16 @@ import { cn } from "@/lib/utils";
 export function CompanyLogo({ name, logoUrl, size = 48 }: { name: string; logoUrl?: string | null; size?: number }) {
   if (logoUrl) {
     // eslint-disable-next-line @next/next/no-img-element
-    return <img src={logoUrl} alt="" width={size} height={size} className="rounded-lg border object-cover" />;
+    return (
+      <img
+        src={logoUrl}
+        alt=""
+        width={size}
+        height={size}
+        style={{ width: size, height: size }}
+        className="shrink-0 rounded-lg border bg-white object-contain"
+      />
+    );
   }
   return (
     <div

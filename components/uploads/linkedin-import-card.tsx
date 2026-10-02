@@ -7,9 +7,9 @@ import { toast } from "sonner";
 import type { LinkedInImportInfo } from "@/lib/types";
 import { clearLinkedIn, importLinkedInExport } from "@/app/(applicant)/profile/actions";
 import type { UploadGate } from "@/components/onboarding/readiness";
-import { ONBOARDING_LINKEDIN_FILES, filesPresentLabel } from "@/lib/linkedin/onboarding-files";
+import { ONBOARDING_LINKEDIN_FILES, filesPresentLabel, type OnboardingLinkedInFile } from "@/lib/linkedin/onboarding-files";
 import { FileDropzone, type DropzonePhase } from "./file-dropzone";
-import { formatImportCounts } from "./import-summary";
+import { formatFileCount, formatImportCounts } from "./import-summary";
 import {
   inspectOnboardingLinkedInFiles,
   type OnboardingLinkedInInspection,
@@ -46,6 +46,7 @@ export function LinkedInImportCard({
   const abortRef = useRef<AbortController | null>(null);
   const onGateChangeRef = useRef(onGateChange);
   onGateChangeRef.current = onGateChange;
+  const selectedRef = useRef<File[]>([]);
   const [committed, setCommitted] = useState(initial);
   const committedRef = useRef(committed);
   committedRef.current = committed;
@@ -56,6 +57,7 @@ export function LinkedInImportCard({
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [batch, setBatch] = useState<OnboardingLinkedInFile[]>([]);
 
   const filesPresent = inspection?.filesPresent ?? [];
   const summary = inspection
@@ -83,15 +85,19 @@ export function LinkedInImportCard({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  async function handleFiles(files: File[]) {
+  async function ingest(files: File[], mode: "replace" | "add") {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     setError(null);
+    const combined = mode === "replace" ? files : [...selectedRef.current, ...files];
     try {
-      const next = await inspectOnboardingLinkedInFiles(files);
+      const added = mode === "add" ? await inspectOnboardingLinkedInFiles(files) : null;
+      const next = await inspectOnboardingLinkedInFiles(combined);
       if (controller.signal.aborted) return;
+      selectedRef.current = combined;
       setInspection(next);
+      setBatch(added?.filesPresent ?? next.filesPresent);
       if (!next.allRequiredPresent) {
         toast.message("Missing files", {
           description: "Upload Profile, Positions, Connections, and Rich_Media before we can save to your account.",
@@ -103,7 +109,7 @@ export function LinkedInImportCard({
       setPhase("uploading");
       setProgress(25);
       const formData = new FormData();
-      for (const file of files) formData.append("files", file);
+      for (const file of combined) formData.append("files", file);
       if (controller.signal.aborted) return;
       setPhase("processing");
       setProgress(60);
@@ -123,18 +129,26 @@ export function LinkedInImportCard({
           richMedia: saved.data.counts.richMedia ?? next.counts.richMedia,
         },
       });
+      setBatch([]);
       setProgress(100);
       setPhase("done");
       router.refresh();
     } catch (caught) {
       if (isAbortError(caught)) return;
-      restoreOrFail(caught instanceof Error ? caught.message : "Something went wrong.");
+      const message = caught instanceof Error ? caught.message : "Something went wrong.";
+      if (committedRef.current?.status === "succeeded") {
+        setError(message);
+        setPhase("done");
+        return;
+      }
+      restoreOrFail(message);
     }
   }
 
   function restoreOrFail(message: string) {
     const previous = committedRef.current;
     setError(message);
+    setBatch([]);
     if (previous?.status === "succeeded") {
       setInspection(inspectionFrom(previous));
       setPhase("done");
@@ -152,21 +166,28 @@ export function LinkedInImportCard({
       toast.error(result.error.message);
       return;
     }
+    selectedRef.current = [];
     setCommitted(null);
     setInspection(null);
+    setBatch([]);
     setPhase("idle");
     setError(null);
     setProgress(0);
     router.refresh();
   }
 
+  const parsing = phase === "uploading" || phase === "processing";
   const shownFiles =
-    phase === "idle"
+    phase === "idle" || !inspection
       ? []
-      : (inspection?.displayNames ?? []).map((name) => ({
-          name,
-          detail: phase === "done" ? summary : undefined,
-        }));
+      : inspection.filesPresent.map((kind) => {
+          const inBatch = parsing && batch.includes(kind);
+          return {
+            name: filesPresentLabel(kind),
+            detail: inBatch ? undefined : formatFileCount(kind, inspection.counts),
+            status: inBatch ? phase : ("done" as const),
+          };
+        });
 
   return (
     <section className="flex flex-col gap-4 rounded-xl border bg-card p-5 shadow-1 sm:p-6">
@@ -198,16 +219,18 @@ export function LinkedInImportCard({
         accept={[".zip", ".csv"]}
         maxBytes={CSV_LIMIT}
         maxBytesByExtension={{ ".zip": ZIP_LIMIT, ".csv": CSV_LIMIT }}
+        filterPicker={false}
         multiple
         phase={shownFiles.length === 0 && phase === "error" ? "idle" : phase}
         progress={progress}
         error={error}
         files={shownFiles}
-        onFiles={handleFiles}
+        onFiles={(files) => void ingest(files, "replace")}
+        onAddFiles={(files) => void ingest(files, "add")}
         onRemove={committed || phase === "error" ? remove : undefined}
         disabled={removing}
         idleTitle="Drag and drop your export"
-        idleHint="ZIP up to 50 MB, or CSV files up to 20 MB each"
+        idleHint="Choose the .zip, or open the export and select the CSV files. ZIP up to 50 MB, CSV files up to 20 MB each."
         processingLabel="Saving to your account…"
         doneAnnouncement={summary}
         replaceLabel={phase === "error" ? "Retry upload" : "Replace"}

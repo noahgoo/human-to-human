@@ -19,3 +19,8 @@ export function supabaseAdmin(): SupabaseClient {
   }
   return client;
 }
+
+/** Same client. Local auth and data loaders call this name. */
+export function admin(): SupabaseClient {
+  return supabaseAdmin();
+}

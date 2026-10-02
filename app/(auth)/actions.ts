@@ -1,23 +1,12 @@
 "use server";
 
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { flattenError, type ZodError } from "zod";
-import { DEMO_ROLE_COOKIE, getSession, homeFor, type DemoPersona } from "@/lib/auth/session";
+import { getSession, homeFor } from "@/lib/auth/session";
+import { createSupabaseServer } from "@/lib/supabase/server";
 import { errorMessage } from "@/lib/copy";
 import type { ActionResult } from "@/lib/types";
 import { emailSchema, passwordSchema, signInSchema, signUpSchema, type EmailValues, type PasswordValues, type SignInValues, type SignUpValues } from "@/components/auth/schemas";
-
-const COOKIE = { httpOnly: true, path: "/", sameSite: "lax" as const };
-
-const FALLBACK_HOME: Record<Exclude<DemoPersona, "none">, string> = {
-  applicant: "/jobs",
-  applicant_new: "/onboarding/applicant",
-  bobby: "/onboarding/applicant",
-  recruiter: "/recruiter/jobs",
-  recruiter_new: "/onboarding/recruiter",
-  admin: "/admin/companies",
-};
 
 function validationFailure(error: ZodError): ActionResult<null> {
   const flat = flattenError(error);
@@ -36,35 +25,44 @@ function validationFailure(error: ZodError): ActionResult<null> {
   };
 }
 
-function personaFromEmail(email: string): Exclude<DemoPersona, "none" | "applicant_new" | "recruiter_new"> {
-  const value = email.toLowerCase();
-  if (value.includes("admin")) return "admin";
-  if (value.includes("recruit") || value.includes("priya")) return "recruiter";
-  return "applicant";
+function fail(code: string, message: string): ActionResult<null> {
+  return { ok: false, error: { code, message } };
 }
 
-async function enterPersona(persona: Exclude<DemoPersona, "none">): Promise<void> {
-  const jar = await cookies();
-  jar.set(DEMO_ROLE_COOKIE, persona, COOKIE);
+function appUrl(path: string): string {
+  return `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"}${path}`;
+}
+
+async function goHome(): Promise<never> {
   const session = await getSession();
-  redirect(session ? homeFor(session) : FALLBACK_HOME[persona]);
+  redirect(session ? homeFor(session) : "/");
 }
 
 export async function signIn(input: SignInValues): Promise<ActionResult<null>> {
   const parsed = signInSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
-  await enterPersona(personaFromEmail(parsed.data.email));
-  return { ok: true, data: null };
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.auth.signInWithPassword(parsed.data);
+  if (error) return fail("UNAUTHENTICATED", "That email and password don't match an account.");
+  redirect("/");
 }
 
 export async function signUp(input: SignUpValues): Promise<ActionResult<null>> {
   const parsed = signUpSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
-  const persona = parsed.data.role === "recruiter" ? "recruiter_new" : "applicant_new";
-  const jar = await cookies();
-  jar.set(DEMO_ROLE_COOKIE, persona, COOKIE);
+  const supabase = await createSupabaseServer();
+  const { data, error } = await supabase.auth.signUp({
+    email: parsed.data.email,
+    password: parsed.data.password,
+    options: {
+      data: { full_name: parsed.data.fullName, role: parsed.data.role },
+      emailRedirectTo: appUrl("/auth/callback"),
+    },
+  });
+  if (error) return fail(error.code === "user_already_exists" ? "CONFLICT" : "INTERNAL", error.message);
+  // Email confirmation off: signed in already. On: wait for the link.
+  if (data.session) redirect("/");
   redirect(`/verify-email?email=${encodeURIComponent(parsed.data.email)}`);
-  return { ok: true, data: null };
 }
 
 export async function continueWithOAuth(input: {
@@ -73,25 +71,32 @@ export async function continueWithOAuth(input: {
 }): Promise<ActionResult<null>> {
   const persona =
     input.flow === "sign-up" ? (input.role === "recruiter" ? "recruiter_new" : "applicant_new") : "applicant";
-  await enterPersona(persona);
-  return { ok: true, data: null };
+  // No OAuth provider is configured yet, so this signs into the matching demo persona.
+  redirect(`/demo?role=${persona}`);
 }
 
 export async function requestPasswordReset(input: EmailValues): Promise<ActionResult<null>> {
   const parsed = emailSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
+    redirectTo: appUrl("/auth/callback?next=/reset-password"),
+  });
+  if (error) return fail("INTERNAL", error.message);
   return { ok: true, data: null };
 }
 
 export async function resetPassword(input: PasswordValues): Promise<ActionResult<null>> {
   const parsed = passwordSchema.safeParse(input);
   if (!parsed.success) return validationFailure(parsed.error);
+  const supabase = await createSupabaseServer();
+  const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
+  if (error) return fail("UNAUTHENTICATED", "Your reset link expired. Request a new one.");
   return { ok: true, data: null };
 }
 
 export async function continueAfterVerify(): Promise<ActionResult<null>> {
   const session = await getSession();
   if (!session) redirect("/sign-in");
-  redirect(homeFor(session));
-  return { ok: true, data: null };
+  return goHome();
 }

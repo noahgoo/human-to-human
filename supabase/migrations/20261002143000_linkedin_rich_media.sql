@@ -1,26 +1,35 @@
-create table if not exists public.linkedin_rich_media (
-  id uuid primary key default gen_random_uuid(),
-  import_id uuid not null references public.linkedin_imports(id) on delete cascade,
-  applicant_id uuid not null references public.profiles(id) on delete cascade,
-  occurred_at text,
-  description text not null check (char_length(description) <= 5000),
-  media_link text check (media_link is null or char_length(media_link) <= 2000),
-  created_at timestamptz not null default now()
-);
+-- LinkedIn rich media. On a fresh database this repo's init schema is timestamped
+-- later and creates the same objects, so skip until linkedin_imports exists.
+do $$
+begin
+  if to_regclass('public.linkedin_imports') is null then
+    return;
+  end if;
 
-create index if not exists linkedin_rich_media_import_idx on public.linkedin_rich_media(import_id);
+  create table if not exists public.linkedin_rich_media (
+    id uuid primary key default gen_random_uuid(),
+    import_id uuid not null references public.linkedin_imports(id) on delete cascade,
+    applicant_id uuid not null references public.profiles(id) on delete cascade,
+    occurred_at text,
+    description text not null check (char_length(description) <= 5000),
+    media_link text check (media_link is null or char_length(media_link) <= 2000),
+    created_at timestamptz not null default now()
+  );
 
-alter table public.linkedin_rich_media enable row level security;
+  create index if not exists linkedin_rich_media_import_idx on public.linkedin_rich_media(import_id);
 
-drop policy if exists linkedin_rich_media_select_own on public.linkedin_rich_media;
-create policy linkedin_rich_media_select_own on public.linkedin_rich_media
-  for select to authenticated
-  using (applicant_id = auth.uid());
+  execute 'alter table public.linkedin_rich_media enable row level security';
 
-grant select on public.linkedin_rich_media to authenticated;
+  drop policy if exists linkedin_rich_media_select_own on public.linkedin_rich_media;
+  create policy linkedin_rich_media_select_own on public.linkedin_rich_media
+    for select to authenticated
+    using (applicant_id = auth.uid());
 
-alter table public.linkedin_imports drop constraint if exists linkedin_imports_files_present_check;
-alter table public.linkedin_imports add constraint linkedin_imports_files_present_check
-  check (files_present <@ array[
-    'Profile.csv','Positions.csv','Skills.csv','Education.csv','Connections.csv','Rich_Media.csv'
-  ]::text[]);
+  grant select on public.linkedin_rich_media to authenticated;
+
+  alter table public.linkedin_imports drop constraint if exists linkedin_imports_files_present_check;
+  alter table public.linkedin_imports add constraint linkedin_imports_files_present_check
+    check (files_present <@ array[
+      'Profile.csv','Positions.csv','Skills.csv','Education.csv','Connections.csv','Rich_Media.csv'
+    ]::text[]);
+end $$;

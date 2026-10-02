@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth/session";
 import { errorMessage } from "@/lib/copy";
-import { setRejectionReason } from "@/lib/data/admin";
 import { db } from "@/lib/mock/db";
 import type { ActionResult, VerificationStatus } from "@/lib/types";
 
@@ -20,7 +19,7 @@ async function setCompanyStatus(
   for (const membership of store.memberships) {
     if (membership.companyId === companyId) membership.verificationStatus = status;
   }
-  setRejectionReason(companyId, reason);
+  company.reviewReason = reason;
   revalidatePath("/admin/companies");
   return { ok: true, data: { id: companyId } };
 }

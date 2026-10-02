@@ -2,10 +2,12 @@ import { z } from "zod";
 import type { WorkMode } from "@/lib/types";
 
 export const SENIORITY_OPTIONS = [
-  "Mid-level Engineer",
-  "Senior / Staff",
-  "Principal Engineer / Architect",
-  "Engineering Manager / Director",
+  "Internship",
+  "Entry level",
+  "Mid-level",
+  "Senior",
+  "Lead / Principal",
+  "Manager / Director",
 ] as const;
 
 export const preferencesSchema = z.object({
