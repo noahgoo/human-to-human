@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+
+<html lang="en"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0" name="viewport"/><meta content="web_standard" name="shell-type"/><link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@500&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><style>@layer base{html,body{margin:0;padding:0;}body{overscroll-behavior:none;}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config={darkMode:"class",theme:{extend:{colors:{"on-error":"#ffffff","on-primary-fixed-variant":"#3c475a","surface-container-high":"#e2e7ff","surface-dim":"#d2d9f4","outline-variant":"#c5c6cd","on-primary-fixed":"#111c2d","tertiary":"#00190e","on-primary":"#ffffff","outline":"#75777d","secondary-container":"#316bf3","tertiary-fixed":"#85f8c4","surface-container-low":"#f2f3ff","surface-container-lowest":"#ffffff","secondary":"#0051d5","secondary-fixed-dim":"#b4c5ff","secondary-fixed":"#dbe1ff","surface-container-highest":"#dae2fd","on-primary-container":"#8590a6","on-background":"#131b2e","on-tertiary-container":"#24a375","on-error-container":"#93000a","on-tertiary-fixed-variant":"#005137","surface-container":"#eaedff","inverse-on-surface":"#eef0ff","surface-tint":"#545f73","background":"#faf8ff","on-secondary-fixed":"#00174b","on-tertiary-fixed":"#002114","surface-bright":"#faf8ff","tertiary-fixed-dim":"#68dba9","surface-variant":"#dae2fd","primary-fixed-dim":"#bcc7de","on-secondary-fixed-variant":"#003ea8","on-surface-variant":"#45474c","on-secondary":"#ffffff","on-secondary-container":"#fefcff","primary":"#091426","primary-fixed":"#d8e3fb","error-container":"#ffdad6","error":"#ba1a1a","inverse-surface":"#283044","on-tertiary":"#ffffff","on-surface":"#131b2e","tertiary-container":"#00301f","primary-container":"#1e293b","surface":"#faf8ff","inverse-primary":"#bcc7de"},borderRadius:{"DEFAULT":"0.125rem","lg":"0.25rem","xl":"0.5rem","full":"0.75rem"},spacing:{"space-3xl":"3rem","margin-mobile":"1rem","space-2xl":"2rem","gutter":"1.5rem","gutter-mobile":"1rem","space-2xs":"0.125rem","margin":"2rem","space-lg":"1rem","space-xl":"1.5rem","margin-desktop-wide":"3rem","space-4xl":"4rem","space-xs":"0.25rem","space-sm":"0.5rem","space-md":"0.75rem"},fontFamily:{"headline-lg-mobile":["Plus Jakarta Sans"],"body-md":["Plus Jakarta Sans"],"display-lg-mobile":["Plus Jakarta Sans"],"headline-sm":["Plus Jakarta Sans"],"body-lg":["Plus Jakarta Sans"],"label-sm":["Plus Jakarta Sans"],"code-sm":["JetBrains Mono"],"headline-md":["Plus Jakarta Sans"],"label-md":["Plus Jakarta Sans"],"body-sm":["Plus Jakarta Sans"],"display-lg":["Plus Jakarta Sans"],"headline-lg":["Plus Jakarta Sans"]},fontSize:{"headline-lg-mobile":["1.5rem",{"lineHeight":"2rem","letterSpacing":"-0.015em","fontWeight":"600"}],"body-md":["0.875rem",{"lineHeight":"1.375rem","letterSpacing":"0em","fontWeight":"400"}],"display-lg-mobile":["2.25rem",{"lineHeight":"2.75rem","letterSpacing":"-0.02em","fontWeight":"700"}],"headline-sm":["1.125rem",{"lineHeight":"1.5rem","letterSpacing":"-0.01em","fontWeight":"600"}],"body-lg":["1rem",{"lineHeight":"1.625rem","letterSpacing":"-0.005em","fontWeight":"400"}],"label-sm":["0.75rem",{"lineHeight":"1rem","letterSpacing":"0.01em","fontWeight":"600"}],"code-sm":["0.75rem",{"lineHeight":"1.125rem","letterSpacing":"0em","fontWeight":"500"}],"headline-md":["1.25rem",{"lineHeight":"1.75rem","letterSpacing":"-0.015em","fontWeight":"600"}],"label-md":["0.875rem",{"lineHeight":"1.25rem","letterSpacing":"-0.005em","fontWeight":"500"}],"body-sm":["0.75rem",{"lineHeight":"1.125rem","letterSpacing":"0em","fontWeight":"400"}],"display-lg":["3rem",{"lineHeight":"3.5rem","letterSpacing":"-0.025em","fontWeight":"700"}],"headline-lg":["2rem",{"lineHeight":"2.5rem","letterSpacing":"-0.02em","fontWeight":"600"}]}}}}</script></head><body class="bg-surface font-body-md text-body-md text-on-surface antialiased"><header class="fixed top-0 w-full z-50 bg-surface-container-lowest shadow-[0_1px_8px_rgba(0,0,0,0.04)]"><div class="h-16 w-full px-margin-desktop-wide flex items-center justify-between gap-space-lg"><div class="flex items-center gap-space-xl"><div class="flex items-center gap-space-sm"><div class="flex items-center justify-center w-8 h-8 rounded bg-primary text-on-primary font-headline-sm text-headline-sm">N</div><span class="font-headline-sm text-headline-sm tracking-tight text-primary">NexusPulse</span><span class="font-label-sm text-label-sm px-space-sm py-space-2xs rounded bg-surface-container-high text-primary font-medium">Recruiter</span></div><nav class="hidden lg:flex items-center gap-space-xs" data-active-classes="bg-surface-container text-on-surface font-semibold rounded"><a class="px-space-md py-space-sm rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" data-path="active-jobs" href="#">Active Jobs</a><a class="px-space-md py-space-sm rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" data-path="candidates-pipeline" href="#">Candidates &amp; Pipeline</a><a class="px-space-md py-space-sm rounded font-label-md text-label-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" data-path="post-a-job" href="#">Post a Job</a></nav></div><div class="flex items-center gap-space-lg"><div class="hidden sm:flex items-center bg-surface-container-low p-space-2xs rounded"><button class="px-space-md py-space-2xs font-label-sm text-label-sm rounded text-on-surface-variant hover:text-on-surface transition-colors" type="button">Candidate</button><button class="px-space-md py-space-2xs font-label-sm text-label-sm rounded bg-surface-container-lowest text-primary shadow-sm font-semibold" type="button">Recruiter</button></div><div class="hidden md:flex items-center gap-space-xs px-space-md py-space-2xs rounded bg-surface-container-low"><span class="font-label-md text-label-md text-on-surface font-medium">Stripe Engineering</span><span class="material-symbols-outlined text-secondary text-sm">verified</span></div><button aria-label="Notifications" class="p-space-xs rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors flex items-center justify-center" type="button"><span class="material-symbols-outlined text-xl">notifications</span></button><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida/AEtjO1WUFjWENP_IiisrO1HdGJtBcrtpWUaIHE2WCSn1wmwYSZMEsDApdWEJvccX-K-H9pl7iPMa9xZg3xN88k-qXEu4gMcbaiOuu1Fm_d-OBeQyJ8Z7rinvDmu5WwifcQXgGWW262EIwPkpYvo3WQ_f5iY3njXOnT8YTGM6sGm4ybI9XnBvfHpuEv9FdB9C2PUMx3qABcZPawk2T5meAHSCymtpKD9ch1bekkoCGZCWxc8R_fjZdT6yyBso4g"/></div></div></header><main class="w-full pt-16 bg-surface min-h-[calc(100vh-80px)]"><div class="flex flex-col w-full px-margin-mobile md:px-margin lg:px-margin-desktop-wide py-space-xl gap-space-2xl">
+<section class="flex flex-col md:flex-row md:items-center justify-between gap-space-lg pb-space-lg">
+<div class="flex flex-col gap-space-xs">
+<div class="flex items-center gap-space-sm flex-wrap">
+<h1 class="font-headline-lg text-headline-lg text-primary tracking-tight">Stripe Engineering</h1>
+<div class="flex items-center gap-space-xs px-space-sm py-space-2xs rounded bg-surface-container-high text-on-tertiary-fixed-variant">
+<span class="material-symbols-outlined text-sm text-secondary">verified</span>
+<span class="font-label-sm text-label-sm font-semibold text-primary">Verified Organization</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-surface-variant font-medium px-space-xs py-space-2xs bg-surface-container rounded">Org ID: STR-8820</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Manage qualified engineering pipelines, verified technical code artifacts, and team review consensus.</p>
+</div>
+<div class="flex items-center gap-space-md flex-wrap">
+<div class="relative inline-block text-left">
+<label class="sr-only" for="requisition-select">Select Requisition</label>
+<div class="flex items-center bg-surface-container-lowest shadow-sm rounded px-space-md py-space-sm gap-space-sm">
+<span class="material-symbols-outlined text-on-surface-variant text-base">work_outline</span>
+<select class="bg-transparent font-label-md text-label-md text-primary font-medium focus:outline-none cursor-pointer pr-space-md" id="requisition-select">
+<option selected="">Staff Infrastructure Engineer (14 applicants)</option>
+<option>Lead Distributed Database Engineer (8 applicants)</option>
+<option>Senior Site Reliability Engineer (11 applicants)</option>
+<option>Principal Cryptography Engineer (5 applicants)</option>
+</select>
+</div>
+</div>
+<button class="flex items-center gap-space-xs px-space-lg py-space-sm rounded bg-primary text-on-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-primary-container transition-colors" type="button">
+<span class="material-symbols-outlined text-base">add</span>
+<span>Post New Job</span>
+</button>
+</div>
+</section>
+<section class="grid grid-cols-1 md:grid-cols-3 gap-space-lg">
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-space-sm">
+<span class="font-label-md text-label-md text-on-surface-variant">Active Job Posts</span>
+<span class="p-space-xs rounded bg-surface-container-low text-secondary flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">folder_open</span>
+</span>
+</div>
+<div class="flex items-baseline gap-space-md">
+<span class="font-display-lg text-display-lg text-primary tracking-tight">4</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container bg-surface-container-high px-space-sm py-space-2xs rounded font-semibold">+1 this week</span>
+</div>
+<div class="mt-space-md pt-space-md font-body-sm text-body-sm text-on-surface-variant flex items-center justify-between">
+<span>Across US, UK, and Remote-EMEA</span>
+<span class="font-code-sm text-code-sm text-primary font-semibold">100% capacity</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-space-sm">
+<span class="font-label-md text-label-md text-on-surface-variant">Total Curated Applicants</span>
+<span class="p-space-xs rounded bg-surface-container-low text-primary flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">verified_user</span>
+</span>
+</div>
+<div class="flex items-baseline gap-space-md">
+<span class="font-display-lg text-display-lg text-primary tracking-tight">38</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant bg-surface-container-low px-space-sm py-space-2xs rounded font-medium">Credit Gated</span>
+</div>
+<div class="mt-space-md pt-space-md font-body-sm text-body-sm text-on-surface-variant flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-xs text-on-tertiary-container">check_circle</span>
+<span>Zero spam or bot submissions detected</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col justify-between">
+<div class="flex items-center justify-between mb-space-sm">
+<span class="font-label-md text-label-md text-on-surface-variant">Qualified Matches (≥85%)</span>
+<span class="p-space-xs rounded bg-surface-container-high text-on-tertiary-fixed-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">auto_awesome</span>
+</span>
+</div>
+<div class="flex items-baseline gap-space-md">
+<span class="font-display-lg text-display-lg text-primary tracking-tight">12</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container bg-surface-container-high px-space-sm py-space-2xs rounded font-semibold">31.5% ratio</span>
+</div>
+<div class="mt-space-md pt-space-md font-body-sm text-body-sm text-on-surface-variant flex items-center justify-between">
+<span>Verified code repository submissions</span>
+<span class="font-label-sm text-label-sm text-secondary font-semibold cursor-pointer hover:underline">Inspect criteria</span>
+</div>
+</div>
+</section>
+<section class="grid grid-cols-1 lg:grid-cols-12 gap-space-2xl items-start">
+<div class="lg:col-span-8 flex flex-col gap-space-lg">
+<div class="bg-surface-container-lowest rounded-xl p-space-lg shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-xs overflow-x-auto pb-space-2xs sm:pb-0" id="filter-tabs">
+<button class="tab-btn px-space-md py-space-sm rounded font-label-md text-label-md font-semibold bg-primary text-on-primary" type="button">All (14)</button>
+<button class="tab-btn px-space-md py-space-sm rounded font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" type="button">High Match ≥90% (5)</button>
+<button class="tab-btn px-space-md py-space-sm rounded font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" type="button">Shortlisted (3)</button>
+<button class="tab-btn px-space-md py-space-sm rounded font-label-md text-label-md font-medium text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors" type="button">Interviewing (2)</button>
+</div>
+<div class="flex items-center gap-space-xs text-on-surface-variant font-label-sm text-label-sm self-end sm:self-auto">
+<span class="material-symbols-outlined text-base">swap_vert</span>
+<span>Ranked by System Match</span>
+</div>
+</div>
+<div class="flex flex-col gap-space-lg">
+<article class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm transition-all hover:shadow-md flex flex-col gap-space-lg">
+<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md">
+<img class="w-12 h-12 rounded-xl object-cover shadow-sm" data-alt="Professional studio portrait of Elena Vance, an experienced female systems engineer with sleek glasses and sharp confident posture, natural soft lighting against neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDU2cuMXWZVRQoT0Xgjoyv3tDT3VgPSK1YaM_6fiePMYOGTeCXB73Oj7g60mPgT5_6vhYShNs7-23crXa3AkwCDItmYmC1h6FxEJL4X2hWmsYhhCKR_sDmrJtpQp9GNuzhJz3kFYbEIpNyZ1BmG4UUH5tb-xtQ8xWsC4MM9WoCbzuPPZqHx6D3N2rs4nyFjTGkgoG37RUVzOc6rAseFXbiR6VvBTShDt8UJmnqNwMyheob-uUe2ciGB"/>
+<div class="flex flex-col gap-space-2xs min-w-0">
+<div class="flex items-center gap-space-sm flex-wrap">
+<h2 class="font-headline-md text-headline-md text-primary font-bold">Elena Vance</h2>
+<span class="font-label-sm text-label-sm px-space-sm py-space-2xs rounded bg-surface-container-high text-on-tertiary-container font-semibold flex items-center gap-space-2xs">
+<span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-container"></span>
+                    94% Match
+                  </span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Applied 2h ago</span>
+</div>
+<p class="font-body-md text-body-md text-primary font-medium">Staff Backend &amp; Distributed Systems Specialist</p>
+<div class="flex items-center gap-space-xs text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-sm">history_edu</span>
+<span>Ex-Cloudflare, Ex-AWS Core Compute</span>
+<span class="text-outline-variant">•</span>
+<span>San Francisco, CA (Open to Hybrid)</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs self-start sm:self-auto">
+<button aria-label="Bookmark candidate" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">bookmark_border</span>
+</button>
+<button aria-label="Candidate options" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-secondary text-base">hub</span>
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface">
+<span class="font-semibold text-primary">3 internal Stripe connections:</span>
+<span class="text-on-surface-variant">David K. (Staff Infra), Sarah L. (Director), Alex M. (Payments Core)</span>
+</div>
+</div>
+<button class="px-space-md py-space-2xs rounded bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container transition-colors shrink-0" type="button">
+              Request Warm Ping
+            </button>
+</div>
+<div class="bg-surface rounded-xl p-space-md flex flex-col gap-space-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">code</span>
+<span class="font-label-md text-label-md text-primary font-semibold">GitHub Architecture Review: 9.2 / 10</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">(Repo: evance/raft-consensus-mesh)</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-tertiary-container font-medium flex items-center gap-space-2xs">
+<span class="material-symbols-outlined text-sm">verified</span>
+                Verified Artifact
+              </span>
+</div>
+<div class="grid grid-cols-3 gap-space-sm pt-space-xs">
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Security Rigor</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">9.4</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 2%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Architecture</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">9.2</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 5%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Runtime Perf</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">9.0</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 8%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-space-md pt-space-xs">
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-base">token</span>
+<span>Spent 2 Verified Application Credits</span>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<button class="px-space-md py-space-sm rounded bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-surface-container transition-colors" type="button">
+                Request Referral Check
+              </button>
+<button class="px-space-md py-space-sm rounded bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-surface-container transition-colors" type="button">
+                View Dossier
+              </button>
+<button class="px-space-lg py-space-sm rounded bg-primary text-on-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-primary-container transition-colors flex items-center gap-space-xs" type="button">
+<span class="material-symbols-outlined text-base">calendar_month</span>
+<span>Schedule Interview</span>
+</button>
+</div>
+</div>
+</article>
+<article class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm transition-all hover:shadow-md flex flex-col gap-space-lg">
+<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md">
+<img class="w-12 h-12 rounded-xl object-cover shadow-sm" data-alt="Studio portrait of Marcus Chen, an Asian male systems software architect in his mid-30s wearing a high quality dark knit sweater, focused and intelligent expression" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA1CnN6frt9NL5my7bOPb1wFN5VbUiyN_Yfgwi4RP1zMIvUeer9jOm0VLO5VBG6PhH1n1HzGjs2sZwq4N9E9ZsMkyZ6UoYVqfxXGChWQV07StcJ4lcFbOXu40CtyGws5jhe0ENDZoNiOR-vEX_yrwdnko-x0zKupvfeXv5vnoabU9zuqs0nhzlmBExd2m7L_M8ZHiFfaqO6ht4mEcckM-iI-pGLqybZT5n_NjE429ZbSubK7kxGYBt0"/>
+<div class="flex flex-col gap-space-2xs min-w-0">
+<div class="flex items-center gap-space-sm flex-wrap">
+<h2 class="font-headline-md text-headline-md text-primary font-bold">Marcus Chen</h2>
+<span class="font-label-sm text-label-sm px-space-sm py-space-2xs rounded bg-surface-container-high text-on-tertiary-container font-semibold flex items-center gap-space-2xs">
+<span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-container"></span>
+                    91% Match
+                  </span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Applied 6h ago</span>
+</div>
+<p class="font-body-md text-body-md text-primary font-medium">Principal Systems Engineer</p>
+<div class="flex items-center gap-space-xs text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-sm">history_edu</span>
+<span>Ex-Google Spanner Org, Ex-Cockroach Labs</span>
+<span class="text-outline-variant">•</span>
+<span>Seattle, WA (Remote)</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs self-start sm:self-auto">
+<button aria-label="Bookmark candidate" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">bookmark_border</span>
+</button>
+<button aria-label="Candidate options" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-secondary text-base">hub</span>
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface">
+<span class="font-semibold text-primary">1 internal Stripe connection:</span>
+<span class="text-on-surface-variant">Priya Nair (Principal Architect, Core Banking)</span>
+</div>
+</div>
+<button class="px-space-md py-space-2xs rounded bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container transition-colors shrink-0" type="button">
+              Request Warm Ping
+            </button>
+</div>
+<div class="bg-surface rounded-xl p-space-md flex flex-col gap-space-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">code</span>
+<span class="font-label-md text-label-md text-primary font-semibold">GitHub Architecture Review: 8.9 / 10</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">(Repo: mchen-proto/b-tree-wal-engine)</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-tertiary-container font-medium flex items-center gap-space-2xs">
+<span class="material-symbols-outlined text-sm">verified</span>
+                Verified Artifact
+              </span>
+</div>
+<div class="grid grid-cols-3 gap-space-sm pt-space-xs">
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Security Rigor</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">9.2</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 4%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Architecture</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">8.8</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 9%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Runtime Perf</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">9.1</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 6%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-space-md pt-space-xs">
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-base">token</span>
+<span>Spent 2 Verified Application Credits</span>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<button class="px-space-md py-space-sm rounded bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-surface-container transition-colors" type="button">
+                View Dossier
+              </button>
+<button class="px-space-lg py-space-sm rounded bg-primary text-on-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-primary-container transition-colors" type="button">
+                Move to Review
+              </button>
+</div>
+</div>
+</article>
+<article class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm transition-all hover:shadow-md flex flex-col gap-space-lg">
+<div class="flex flex-col sm:flex-row sm:items-start justify-between gap-space-md">
+<div class="flex items-start gap-space-md">
+<img class="w-12 h-12 rounded-xl object-cover shadow-sm" data-alt="Portrait of Sophia Patel, South Asian woman with warm confident expression, dark hair, wearing a slate grey tailored blazer in a modern architectural workplace" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBA3oy1Z7DvdgffnS2cN-NNpelA4j069R5iyagDbmRu0OfjqUfPT4jphFgGkak3LP87YtXlZBkveobP5c0_6CAEwwgcJy7VKEf2R_hIFwmgeTScjGdUqwSl_GR0kx4I2r_xv3PEodACUvwi4hstf1X4lm01Gr-PlfzJe3HeJrsgusIfGo08QJXNU_kYhaLtlXauX4btNb0ZV7iShmwQe6cGKJGZE-ESt_V4AWc-auim2MP9onFD3NAj"/>
+<div class="flex flex-col gap-space-2xs min-w-0">
+<div class="flex items-center gap-space-sm flex-wrap">
+<h2 class="font-headline-md text-headline-md text-primary font-bold">Sophia Patel</h2>
+<span class="font-label-sm text-label-sm px-space-sm py-space-2xs rounded bg-surface-container-high text-on-tertiary-container font-semibold flex items-center gap-space-2xs">
+<span class="w-1.5 h-1.5 rounded-full bg-on-tertiary-container"></span>
+                    87% Match
+                  </span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Applied 1d ago</span>
+</div>
+<p class="font-body-md text-body-md text-primary font-medium">Senior Cloud Infrastructure Architect</p>
+<div class="flex items-center gap-space-xs text-on-surface-variant font-body-sm text-body-sm">
+<span class="material-symbols-outlined text-sm">history_edu</span>
+<span>Ex-Datadog Observability, Ex-Lyft Infra</span>
+<span class="text-outline-variant">•</span>
+<span>New York, NY (Hybrid)</span>
+</div>
+</div>
+</div>
+<div class="flex items-center gap-space-xs self-start sm:self-auto">
+<button aria-label="Bookmark candidate" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">bookmark_border</span>
+</button>
+<button aria-label="Candidate options" class="p-space-sm rounded hover:bg-surface-container-low text-on-surface-variant transition-colors" type="button">
+<span class="material-symbols-outlined text-lg">more_horiz</span>
+</button>
+</div>
+</div>
+<div class="bg-surface-container-low rounded-xl p-space-md flex flex-col md:flex-row md:items-center justify-between gap-space-md">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-secondary text-base">hub</span>
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface">
+<span class="font-semibold text-primary">2 internal Stripe connections:</span>
+<span class="text-on-surface-variant">Liam T. (Reliability), Chloe M. (Infrastructure Lead)</span>
+</div>
+</div>
+<button class="px-space-md py-space-2xs rounded bg-surface-container-lowest text-primary font-label-sm text-label-sm font-semibold shadow-sm hover:bg-surface-container transition-colors shrink-0" type="button">
+              Request Warm Ping
+            </button>
+</div>
+<div class="bg-surface rounded-xl p-space-md flex flex-col gap-space-sm">
+<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-space-xs">
+<div class="flex items-center gap-space-sm">
+<span class="material-symbols-outlined text-primary text-base">code</span>
+<span class="font-label-md text-label-md text-primary font-semibold">GitHub Architecture Review: 8.8 / 10</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">(Repo: spatel-io/k8s-mesh-operator)</span>
+</div>
+<span class="font-label-sm text-label-sm text-on-tertiary-container font-medium flex items-center gap-space-2xs">
+<span class="material-symbols-outlined text-sm">verified</span>
+                Verified Artifact
+              </span>
+</div>
+<div class="grid grid-cols-3 gap-space-sm pt-space-xs">
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Security Rigor</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">8.9</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 8%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Architecture</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">8.7</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 10%</span>
+</div>
+</div>
+<div class="flex flex-col p-space-sm rounded bg-surface-container-lowest">
+<span class="font-body-sm text-body-sm text-on-surface-variant">Runtime Perf</span>
+<div class="flex items-baseline justify-between mt-space-2xs">
+<span class="font-label-md text-label-md font-bold text-primary">8.9</span>
+<span class="font-label-sm text-label-sm text-on-tertiary-container">Top 8%</span>
+</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-space-md pt-space-xs">
+<div class="flex items-center gap-space-xs text-body-sm font-body-sm text-on-surface-variant">
+<span class="material-symbols-outlined text-base">token</span>
+<span>Spent 2 Verified Application Credits</span>
+</div>
+<div class="flex items-center gap-space-sm flex-wrap">
+<button class="px-space-md py-space-sm rounded bg-surface-container-lowest text-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-surface-container transition-colors" type="button">
+                View Dossier
+              </button>
+<button class="px-space-lg py-space-sm rounded bg-primary text-on-primary font-label-md text-label-md font-semibold shadow-sm hover:bg-primary-container transition-colors" type="button">
+                Move to Review
+              </button>
+</div>
+</div>
+</article>
+</div>
+</div>
+<aside class="lg:col-span-4 flex flex-col gap-space-lg">
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-secondary text-base">verified_user</span>
+<h3 class="font-headline-sm text-headline-sm text-primary">Credit Intake Gate</h3>
+</div>
+<span class="font-label-sm text-label-sm px-space-sm py-space-2xs rounded bg-surface-container-high text-on-tertiary-container font-semibold">Active Anti-Spam</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Candidates must spend verified account credits to submit dossiers. This enforces deliberate high-intent engineering submissions and completely eliminates blind multi-applications.</p>
+<div class="bg-surface-container-low rounded-xl p-space-sm flex flex-col gap-space-xs mt-space-xs">
+<label class="flex items-center justify-between p-space-sm rounded-lg bg-surface-container-lowest shadow-sm cursor-pointer transition-colors">
+<div class="flex items-center gap-space-sm">
+<input checked="" class="text-primary focus:ring-secondary" name="credit-gate" type="radio" value="2"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-primary">2 Credits Required</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Recommended for Staff &amp; Principal roles</span>
+</div>
+</div>
+<span class="font-code-sm text-code-sm text-secondary font-bold">Default</span>
+</label>
+<label class="flex items-center justify-between p-space-sm rounded-lg hover:bg-surface-container-lowest cursor-pointer transition-colors">
+<div class="flex items-center gap-space-sm">
+<input class="text-primary focus:ring-secondary" name="credit-gate" type="radio" value="1"/>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-primary">1 Credit Required</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Broad funnel for high-velocity hiring</span>
+</div>
+</div>
+</label>
+</div>
+<div class="flex items-center justify-between text-body-sm font-body-sm text-on-surface-variant pt-space-xs">
+<span>Current spam filter efficiency</span>
+<span class="font-semibold text-primary">99.8% purity</span>
+</div>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-base">assessment</span>
+<h3 class="font-headline-sm text-headline-sm text-primary">Technical AI Evaluation Pillars</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Repository models parse candidates' past pull requests, merge history, and commit styles against role rubrics.</p>
+<div class="flex flex-col gap-space-md pt-space-xs">
+<div class="flex flex-col gap-space-xs">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="font-semibold text-primary">Code Organization &amp; Decoupling</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Weight: 30%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 30%;"></div>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Modularity, domain isolation, and interface boundaries.</span>
+</div>
+<div class="flex flex-col gap-space-xs">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="font-semibold text-primary">Security &amp; Vulnerability Rigor</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Weight: 25%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 25%;"></div>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Zero SQL/memory injection, authenticated primitives, rate checks.</span>
+</div>
+<div class="flex flex-col gap-space-xs">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="font-semibold text-primary">Runtime &amp; Concurrent Performance</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Weight: 25%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 25%;"></div>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Lock contention, thread pooling, and p99 latency management.</span>
+</div>
+<div class="flex flex-col gap-space-xs">
+<div class="flex justify-between font-label-sm text-label-sm">
+<span class="font-semibold text-primary">Test Harness &amp; Verification Coverage</span>
+<span class="font-code-sm text-code-sm text-on-surface-variant">Weight: 20%</span>
+</div>
+<div class="w-full h-1.5 rounded-full bg-surface-container-high overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 20%;"></div>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Deterministic integration, fuzzing, and failure domain mockups.</span>
+</div>
+</div>
+<button class="mt-space-xs w-full py-space-sm rounded bg-surface-container-low text-primary font-label-md text-label-md font-semibold hover:bg-surface-container transition-colors text-center" type="button">
+          Edit Requisition Weights
+        </button>
+</div>
+<div class="bg-surface-container-lowest rounded-xl p-space-xl shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center justify-between">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-primary text-base">group</span>
+<h3 class="font-headline-sm text-headline-sm text-primary">Hiring Review Panel</h3>
+</div>
+<span class="font-label-sm text-label-sm text-secondary font-semibold cursor-pointer hover:underline">+ Invite</span>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Active engineers reviewing candidate dossiers for this role:</p>
+<div class="flex flex-col gap-space-sm pt-space-xs">
+<div class="flex items-center justify-between p-space-sm rounded-lg hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-headline-sm text-headline-sm text-xs">DK</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-primary">David Kim</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Staff Infrastructure Lead</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm px-space-xs py-space-2xs rounded bg-surface-container-high text-on-tertiary-container font-medium">Lead Reviewer</span>
+</div>
+<div class="flex items-center justify-between p-space-sm rounded-lg hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-full bg-secondary text-on-secondary flex items-center justify-center font-headline-sm text-headline-sm text-xs">SL</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-primary">Sarah Lin</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Director of Core Engineering</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm px-space-xs py-space-2xs rounded bg-surface-container text-on-surface-variant font-medium">Approver</span>
+</div>
+<div class="flex items-center justify-between p-space-sm rounded-lg hover:bg-surface-container-low transition-colors">
+<div class="flex items-center gap-space-sm">
+<div class="w-8 h-8 rounded-full bg-surface-variant text-on-surface-variant flex items-center justify-center font-headline-sm text-headline-sm text-xs">AM</div>
+<div class="flex flex-col">
+<span class="font-label-md text-label-md font-semibold text-primary">Alex Mercer</span>
+<span class="font-body-sm text-body-sm text-on-surface-variant">Senior Distributed Systems</span>
+</div>
+</div>
+<span class="font-label-sm text-label-sm px-space-xs py-space-2xs rounded bg-surface-container text-on-surface-variant font-medium">Interviewer</span>
+</div>
+</div>
+<div class="mt-space-xs pt-space-sm flex items-center justify-between font-body-sm text-body-sm text-on-surface-variant">
+<span>Consensus Target</span>
+<span class="font-semibold text-primary">3 / 3 Approvals</span>
+</div>
+</div>
+</aside>
+</section>
+</div>
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const tabs = document.querySelectorAll('#filter-tabs .tab-btn');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => {
+          t.classList.remove('bg-primary', 'text-on-primary', 'font-semibold');
+          t.classList.add('text-on-surface-variant', 'font-medium');
+        });
+        tab.classList.remove('text-on-surface-variant', 'font-medium');
+        tab.classList.add('bg-primary', 'text-on-primary', 'font-semibold');
+      });
+    });
+  });
+</script></main><footer class="w-full bg-surface-container-lowest py-space-xl shadow-[0_-1px_4px_rgba(0,0,0,0.02)]"><div class="w-full px-margin-desktop-wide flex flex-col sm:flex-row items-center justify-between gap-space-md"><div class="flex items-center gap-space-sm font-body-sm text-body-sm text-on-surface-variant"><span class="font-semibold text-primary">NexusPulse for Employers</span><span>© 2024 NexusPulse Inc.</span></div><div class="flex items-center gap-space-lg font-body-sm text-body-sm"><a class="text-on-surface-variant hover:text-on-surface transition-colors" data-path="support" href="#">Support</a><a class="text-on-surface-variant hover:text-on-surface transition-colors" data-path="pricing-credits" href="#">Pricing &amp; Credits</a><a class="text-on-surface-variant hover:text-on-surface transition-colors" data-path="privacy-policy" href="#">Privacy Policy</a><a class="text-on-surface-variant hover:text-on-surface transition-colors" data-path="terms" href="#">Terms</a></div></div></footer></body></html>

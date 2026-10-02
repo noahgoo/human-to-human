@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Sign In - NexusPulse</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    @layer base {
+      html, body { margin: 0; padding: 0; }
+      body { overscroll-behavior: none; }
+    }
+    ::-webkit-scrollbar { display: none; }
+  </style>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface": "#faf8ff",
+            "surface-container-lowest": "#ffffff",
+            "surface-container-low": "#f2f3ff",
+            "surface-container": "#eaedff",
+            "surface-container-high": "#e2e7ff",
+            "primary": "#091426",
+            "primary-container": "#1e293b",
+            "secondary": "#0051d5",
+            "secondary-container": "#316bf3",
+            "on-surface": "#131b2e",
+            "on-surface-variant": "#45474c",
+            "outline": "#75777d",
+            "outline-variant": "#c5c6cd"
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace']
+          },
+          borderRadius: {
+            DEFAULT: "0.25rem",
+            lg: "0.5rem",
+            xl: "0.75rem",
+            '2xl': "1rem"
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="bg-[#f8fafc] font-sans text-[#0f172a] antialiased min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8">
+<main class="w-full max-w-5xl">
+<!-- Main Card Container -->
+<div class="w-full bg-white rounded-2xl border border-slate-200 shadow-xl shadow-slate-200/50 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+<!-- LEFT COLUMN: Brand & Key Features -->
+<div class="lg:col-span-5 p-8 lg:p-12 bg-slate-50 border-b lg:border-b-0 lg:border-r border-slate-200 flex flex-col justify-between">
+<div>
+<!-- Logo & Brand Header -->
+<div class="flex items-center gap-2.5 mb-8">
+<div class="w-9 h-9 rounded-lg bg-[#0f172a] flex items-center justify-center text-white shadow-sm">
+<span class="material-symbols-outlined text-xl">hub</span>
+</div>
+<span class="text-xl font-bold tracking-tight text-[#0f172a]">NexusPulse</span>
+</div>
+<!-- Hero Headline & Description -->
+<div class="mb-10">
+<h1 class="text-2xl lg:text-3xl font-bold tracking-tight text-[#0f172a] leading-snug">
+              Career connections built for tech talent.
+            </h1>
+<p class="mt-3 text-sm lg:text-base text-slate-600 leading-relaxed">
+              Intelligent career matching and referral connections for tech talent.
+            </p>
+</div>
+<!-- 3 Value Bullet Points -->
+<div class="space-y-6">
+<div class="flex items-start gap-3.5">
+<div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-[#0051d5] shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-lg">token</span>
+</div>
+<div>
+<h3 class="text-sm font-semibold text-slate-900">10 monthly application credits</h3>
+<p class="text-xs text-slate-500 mt-0.5 leading-normal">Complimentary monthly balance for targeted matches and direct outreach.</p>
+</div>
+</div>
+<div class="flex items-start gap-3.5">
+<div class="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-lg">group</span>
+</div>
+<div>
+<h3 class="text-sm font-semibold text-slate-900">Find 1st-degree connections</h3>
+<p class="text-xs text-slate-500 mt-0.5 leading-normal">Discover warm referrals directly inside companies hiring for your skill set.</p>
+</div>
+</div>
+<div class="flex items-start gap-3.5">
+<div class="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shrink-0 mt-0.5">
+<span class="material-symbols-outlined text-lg">code_blocks</span>
+</div>
+<div>
+<h3 class="text-sm font-semibold text-slate-900">AI code reviews on GitHub</h3>
+<p class="text-xs text-slate-500 mt-0.5 leading-normal">Highlight your code quality, architecture, and project impact automatically.</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Social Proof / Footer Testimonial -->
+<div class="mt-10 pt-6 border-t border-slate-200">
+<div class="flex items-center gap-3">
+<div class="flex -space-x-1.5 overflow-hidden">
+<span class="inline-block h-7 w-7 rounded-full ring-2 ring-white bg-slate-200 text-[10px] font-semibold flex items-center justify-center text-slate-700">SC</span>
+<span class="inline-block h-7 w-7 rounded-full ring-2 ring-white bg-slate-300 text-[10px] font-semibold flex items-center justify-center text-slate-700">MR</span>
+<span class="inline-block h-7 w-7 rounded-full ring-2 ring-white bg-slate-400 text-[10px] font-semibold flex items-center justify-center text-slate-700">AK</span>
+</div>
+<p class="text-xs text-slate-500 font-medium">
+              Trusted by 14,000+ software engineers
+            </p>
+</div>
+</div>
+</div>
+<!-- RIGHT COLUMN: Authentication Portal -->
+<div class="lg:col-span-7 p-8 lg:p-12 flex flex-col justify-between">
+<div class="w-full max-w-md mx-auto">
+<!-- Role Switcher Segmented Control -->
+<div class="p-1 rounded-xl bg-slate-100 border border-slate-200/80 flex items-center mb-8">
+<button class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 bg-white text-slate-900 shadow-sm border border-slate-200/60 flex items-center justify-center gap-1.5" id="btnRoleCandidate" onclick="setRole('candidate')">
+<span class="material-symbols-outlined text-base">person</span>
+              Job Seeker
+            </button>
+<button class="flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-150 text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5" id="btnRoleRecruiter" onclick="setRole('recruiter')">
+<span class="material-symbols-outlined text-base">apartment</span>
+              Recruiter / Company
+            </button>
+</div>
+<!-- Section Heading -->
+<div class="mb-6 text-left">
+<h2 class="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight" id="portalHeading">Sign in to your account</h2>
+<p class="text-sm text-slate-500 mt-1" id="portalSubheading">Welcome back. Access your applications and connections.</p>
+</div>
+<!-- Primary SSO Action: LinkedIn -->
+<button class="w-full h-11 px-4 rounded-lg bg-[#0077b5] hover:bg-[#006399] active:bg-[#004e7a] text-white flex items-center justify-center gap-3 font-semibold text-sm transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-[#0077b5]/30">
+<svg class="w-4 h-4 fill-current shrink-0" viewbox="0 0 24 24">
+<path d="M19 3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14m-.5 15.5v-5.3a3.26 3.26 0 0 0-3.26-3.26c-.85 0-1.84.52-2.28 1.3v-1.11h-2.79v8.37h2.79v-4.93c0-.77.62-1.4 1.39-1.4a1.4 1.4 0 0 1 1.4 1.4v4.93h2.75M6.88 8.56a1.68 1.68 0 0 0 1.68-1.68c0-.93-.75-1.69-1.68-1.69a1.69 1.69 0 0 0-1.69 1.69c0 .93.76 1.68 1.69 1.68m1.39 9.94v-8.37H5.5v8.37h2.77z"></path>
+</svg>
+<span>Continue with LinkedIn</span>
+</button>
+<!-- Divider -->
+<div class="relative my-6 flex items-center justify-center">
+<div class="w-full border-t border-slate-200"></div>
+<span class="absolute px-3 bg-white text-xs text-slate-400 font-medium">or sign in with email</span>
+</div>
+<!-- Email / Password Form -->
+<form class="space-y-4" onsubmit="event.preventDefault();">
+<div>
+<label class="block text-xs font-semibold text-slate-700 mb-1.5" for="emailInput">Email address</label>
+<input class="w-full h-11 px-3.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 text-sm focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-colors outline-none" id="emailInput" placeholder="name@example.com" type="email"/>
+</div>
+<div>
+<div class="flex items-center justify-between mb-1.5">
+<label class="block text-xs font-semibold text-slate-700" for="passInput">Password</label>
+<a class="text-xs font-medium text-[#0051d5] hover:text-blue-700 transition-colors" href="#">Forgot password?</a>
+</div>
+<input class="w-full h-11 px-3.5 rounded-lg bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 text-sm focus:border-slate-900 focus:ring-1 focus:ring-slate-900 transition-colors outline-none" id="passInput" placeholder="••••••••••••" type="password"/>
+</div>
+<button class="w-full h-11 mt-2 rounded-lg bg-[#0f172a] hover:bg-slate-800 active:bg-slate-900 text-white font-semibold text-sm transition-colors shadow-sm flex items-center justify-center gap-1.5 focus:outline-none focus:ring-2 focus:ring-slate-900/20" type="submit">
+<span>Sign In</span>
+<span class="material-symbols-outlined text-base">arrow_forward</span>
+</button>
+</form>
+<!-- Sign Up Helper Note -->
+<div class="mt-6 pt-5 border-t border-slate-100 text-center">
+<p class="text-xs sm:text-sm text-slate-500">
+              New to NexusPulse?
+              <a class="font-semibold text-[#0051d5] hover:text-blue-700 transition-colors ml-1" href="#">Create an account</a>
+<span class="text-slate-400 font-normal ml-1">to claim 10 free credits.</span>
+</p>
+</div>
+</div>
+<!-- Security & Legal Footer -->
+<div class="w-full max-w-md mx-auto pt-8 mt-6 flex items-center justify-between text-xs text-slate-400">
+<div class="flex items-center gap-1.5">
+<span class="material-symbols-outlined text-sm text-slate-400">lock</span>
+<span>256-bit secure encryption</span>
+</div>
+<div class="flex items-center gap-3">
+<a class="hover:text-slate-600 transition-colors" href="#">Privacy</a>
+<span>•</span>
+<a class="hover:text-slate-600 transition-colors" href="#">Terms</a>
+</div>
+</div>
+</div>
+</div>
+</main>
+<script>
+    function setRole(role) {
+      const candidateBtn = document.getElementById('btnRoleCandidate');
+      const recruiterBtn = document.getElementById('btnRoleRecruiter');
+      const heading = document.getElementById('portalHeading');
+      const subheading = document.getElementById('portalSubheading');
+
+      if (role === 'candidate') {
+        candidateBtn.className = "flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 bg-white text-slate-900 shadow-sm border border-slate-200/60 flex items-center justify-center gap-1.5";
+        recruiterBtn.className = "flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-150 text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5";
+        heading.textContent = "Sign in to your account";
+        subheading.textContent = "Welcome back. Access your applications and connections.";
+      } else {
+        recruiterBtn.className = "flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-semibold transition-all duration-150 bg-white text-slate-900 shadow-sm border border-slate-200/60 flex items-center justify-center gap-1.5";
+        candidateBtn.className = "flex-1 py-2 px-3 rounded-lg text-xs sm:text-sm font-medium transition-all duration-150 text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5";
+        heading.textContent = "Sign in as Recruiter";
+        subheading.textContent = "Access verified candidates, code reviews, and company referrals.";
+      }
+    }
+  </script>
+</body></html>
