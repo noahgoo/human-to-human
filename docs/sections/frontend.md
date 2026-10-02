@@ -14,23 +14,23 @@ Each item has a frontend default. We build with the default unless the Lead over
 
 | # | Item | Frontend default | Needs |
 |---|---|---|---|
-| F1 | **Middleware needs `role` and onboarding state without a DB round trip on every request.** | Supabase **Custom Access Token Hook** adds `app_metadata.user_role`, `app_metadata.onboarded` (bool) and, for recruiters, `app_metadata.membership_status` to the JWT. After the role is set or onboarding finishes, the client calls `supabase.auth.refreshSession()`. Layout guards (`requireRole`, `requireOnboarded`) stay authoritative. | Data (hook function + grant), Backend (guards) |
+| F1 | **Middleware needs `role` and onboarding state without a DB round trip on every request.** | Supabase **Custom Access Token Hook** adds the claims `app_role`, `onboarded` (bool) and, for recruiters, `membership_status` to the JWT (names per backend.md B1; MASTER_PLAN D-24). After the role is set or onboarding finishes, the client calls `supabase.auth.refreshSession()`. Layout guards (`requireRole`, `requireOnboarded`) stay authoritative. | Data (hook function + grant), Backend (guards) |
 | F2 | **`jobs` has no location / work mode.** All job cards in Stitch show location and "Remote". | Add `jobs.location text null` and `jobs.work_mode` (`remote`/`hybrid`/`onsite`, null allowed) to MVP. Compensation stays **Later** (§7). | Data, Lead (decision log) |
 | F3 | **Applicant onboarding completion.** The spec says onboarding uploads LinkedIn data *and* a resume. The design has "Skip for now". | **Resume is required** to finish onboarding (`onboarded_at` set). The LinkedIn export is **strongly recommended but skippable**: Check fit then runs on the resume only, and the connections list shows "Upload your LinkedIn export to see connections". Skipping can be reversed from `/profile`. | Lead (spec interpretation), Backend (fit prompt must tolerate a null `linkedin_import_id`) |
-| F4 | **Check-fit response shape.** Connections are "shown immediately, alongside the score". | Both the `200` (cache hit) and the `202` response of `POST /api/v1/jobs/{jobId}/fit-evaluations` include `connections: {firstName, lastName, position}[]` and `connectionsTotal`. The poll endpoint returns them too. | Backend |
+| F4 | **Check-fit response shape.** Connections are "shown immediately, alongside the score". | **Resolved (MASTER_PLAN D-22):** connections are **not** embedded in the fit response. `CheckFitPanel` calls `GET /api/v1/jobs/{jobId}/connections` in parallel with the fit POST, so they still render immediately. | Resolved |
 | F5 | **Job list needs the applicant's latest fit per job** so cards can show `MatchScoreBadge` without a click. | A view or RPC `my_latest_fit_evaluations(job_ids uuid[])` that returns the latest `succeeded` row per job plus an `is_stale` flag (input hash no longer matches). The RSC loader calls it once per page. | Data |
 | F6 | **Uploads must not pass through Vercel functions** (4.5 MB request-body limit, and resumes can be 5 MB). | Upload `init` returns a Supabase **signed upload URL**. The browser `PUT`s the file straight to Storage with XHR (so we get progress events), then calls `complete`. | Backend (init/complete endpoints), Data (bucket policies) |
 | F7 | **Terminology.** Spec and code say "tokens". All 5 designs say "Credits". | **UI copy says "credits"; code, DB and API say `token`.** See §2.6. | Lead to confirm with the user |
 | F8 | **Can recruiters see an applicant's LinkedIn positions, education and skills?** | **Resolved: no.** Recruiters see the **resume only** (data.md §7 matrix, applicant-ranking §2.8). There is no `LinkedInSummary` in MVP. | Resolved (Data) |
 | F9 | **Editing a job after people applied.** Changing `token_cost` or `is_technical` would be unfair to existing applicants. | Once a job has ≥1 application, `token_cost` and `is_technical` are read-only in the edit form, and the server rejects changes with `CONFLICT`. | Backend |
 | F10 | **Application status transitions.** | **Adopted from data.md `set_application_status`:** `submitted ⇄ shortlisted`, `submitted|shortlisted → rejected`, `rejected → shortlisted`, and never out of `withdrawn`. UI: Shortlist and Reject in the list. "Move back to New" and "Reconsider (shortlist)" appear on the detail page only, and Reconsider warns that the applicant already got a rejection email. **Withdraw is MVP:** `withdrawApplication` exists in Backend and Data. It appears on `/applications/[id]` for `submitted`/`shortlisted`, with a confirm dialog: "Credits are not refunded." | Resolved (Data, Backend) |
-| F11 | **Pending recruiters.** | A recruiter with `recruiter_memberships.verification_status = 'pending'` finishes onboarding but is held on `/recruiter/pending`. They cannot create drafts. Only `/recruiter/company` and `/settings` are reachable. | Backend (company-verification sub-plan) |
+| F11 | **Pending recruiters.** | A recruiter with `recruiter_memberships.verification_status = 'pending'` finishes onboarding but sees a `VerificationBanner` and may create and edit **draft** jobs (`/recruiter/jobs`, `/recruiter/jobs/new`, `/recruiter/jobs/[jobId]/edit`), but cannot publish or see applicants. `/recruiter/pending` is the landing page after onboarding. | **Resolved (MASTER_PLAN D-09)**, per company-verification §2.4 |
 | F12 | **Applicant list sort keys.** | **Resolved by applicant-ranking §2.7/§2.9:** `sort=rank|confidence|github|newest|oldest` (`github` only for technical jobs), keyset cursors via `job_applicant_rankings_page`, and filters `status`, `minConfidence`, `github`, `includeIncomplete`. | Resolved (Data) |
 | F13 | **Token balance endpoint shape.** | Adopted from `token-system.md` §4: `GET /api/v1/tokens/balance` → `{ period, granted, spent, refunded, adjusted, balance, resetsAt }`. Apply's `201` returns `balanceAfter`, and the dialog sends `expectedTokenCost`. | Resolved (token-system) |
 | F14 | **LinkedIn import polling.** | `GET /api/v1/linkedin-imports/{id}` → `{ status, filesPresent, counts: {connections, companies, positions, skills, education}, error }`. Same pattern for `GET /api/v1/resumes/{id}` → `{ parseStatus, error }`. | Backend, Data |
 | F15 | **Admin queue UI** (`/admin/companies`). | Frontend builds a minimal table page in Phase 2. There is no design for it. | Lead (confirm in MVP) |
 | F16 | **Resume viewer vs Backend B5** (resumes are served with `Content-Disposition: attachment` because there is no AV scan in MVP). | The viewer is **text-first**: extracted `text_content` in a scroll panel, plus a "Download original" button that calls `getResumeUrl` (60 s, attachment). **No inline PDF iframe in MVP.** It comes Later, together with the ClamAV step, as a sandboxed iframe. The detail payload must therefore include `resume {available, fileName, mimeType, sizeBytes, textContent}`. | Data/Backend (add these fields to the detail read) |
-| F17 | **Applicant onboarding gate vs `mark_onboarded()`.** data.md requires a succeeded LinkedIn import. Frontend F3 lets the applicant skip LinkedIn. | Frontend keeps F3, so `mark_onboarded()` must accept resume-only. Otherwise remove "Skip LinkedIn" from the UI. | **Lead decides** |
+| F17 | **Applicant onboarding gate vs `mark_onboarded()`.** data.md requires a succeeded LinkedIn import. Frontend F3 lets the applicant skip LinkedIn. | Frontend keeps F3, so `mark_onboarded()` must accept resume-only. Otherwise remove "Skip LinkedIn" from the UI. | **Resolved (MASTER_PLAN D-08):** F3 stands; `mark_onboarded()` requires only a parsed resume. |
 
 ### 1.2 Spec items with no Stitch design
 
@@ -246,7 +246,7 @@ Route groups do not change URLs, so applicant URLs are unprefixed (`/jobs`) whil
 | Onboarded | `/sign-in`, `/sign-up`, `/onboarding/*`, `/` | role home |
 | Applicant | `/recruiter/*`, `/admin/*` | `/jobs` |
 | Recruiter | applicant paths, `/admin/*` | `/recruiter/jobs` |
-| Recruiter, `membership_status='pending'` | `/recruiter/*` except `pending`, `company` | `/recruiter/pending` (done in the `(recruiter)` layout, not in middleware) |
+| Recruiter, `membership_status='pending'` | `/recruiter/jobs/[jobId]` (applicant list) and other verified-only pages | `/recruiter/pending` (done in the `(recruiter)` layout, not in middleware). Draft pages stay reachable (D-09). |
 
 Role homes: applicant `/jobs`, recruiter `/recruiter/jobs`, admin `/admin/companies`.
 
@@ -262,13 +262,13 @@ Role homes: applicant `/jobs`, recruiter `/recruiter/jobs`, admin `/admin/compan
 |---|---|---|---|
 | `AppShell` | `role`, `user {name, avatarUrl}`, `children` | `(group)/layout.tsx` RSC via `getSession()` + `profiles` | 64 px top nav. Nav: applicant = Jobs, My applications. Recruiter = Jobs, Post a job, Company. Mobile = Sheet. |
 | `RoleBadge` | `role` | session claims | Replaces the Stitch role switcher. Recruiter variant shows company name + verified tick. |
-| `TokenBalancePill` | `initialBalance: TokenBalance` | RSC prefetch (`get_token_balance()`) → TanStack `['token-balance']` ← `GET /api/v1/tokens/balance` | "`balance` / `granted + refunded + adjusted` credits", e.g. "8 / 10 credits" (the denominator can exceed 10 after a refund; see token-system review item 4). Tooltip: "Resets {resetsAt in local time}. Unused credits don't roll over." Applicants only. Optimistic (§5.4). |
+| `TokenBalancePill` | `initialBalance: TokenBalance` | RSC prefetch (`get_token_balance()`) → TanStack `['token-balance']` ← `GET /api/v1/tokens/balance` | "`balance` / `total` credits" (`total` from the API = granted + refunded + adjusted, D-11), e.g. "8 / 10 credits" (the denominator can exceed 10 after a refund; see token-system review item 4). Tooltip: "Resets {resetsAt in local time}. Unused credits don't roll over." Applicants only. Optimistic (§5.4). |
 | `TokenCostBadge` | `cost: 1|2|3` | `jobs.token_cost` | Mono, `token-subtle` bg. "2 credits". |
 | `TokenCostSelector` | `value`, `onChange`, `disabled?`, `disabledReason?` | form state | Three radio cards (1/2/3) from Stitch step 4. "2 credits" is labelled *Recommended*. Default is 2. |
 | `JobCard` | `job: JobListItem`, `fit?: FitSummary`, `connectionsCount?: number`, `applied?: {applicationId, status}`, `onCheckFit()` | `/jobs` RSC: open `jobs` + `companies` + F5 + `my_applications` | From the Stitch card: logo (initial monogram fallback), title, company · location · work mode, `TokenCostBadge`, `MatchScoreBadge` if fit exists, `Technical` chip. CTAs: **Check fit** (secondary) and **View & apply** (primary). Shows a `StatusChip` instead of Apply when the user has already applied. No comp range, no bookmark. |
 | `MatchScoreBadge` | `score: number|null`, `status?: evaluation_status`, `stale?: boolean`, `size?` | `fit_evaluations.confidence_score` | Bands come from the shared `lib/ranking/bands.ts` (applicant-ranking §2.6): **≥85 "Strong match"** (success), **70–84.99 "Good match"** (success-subtle, outline), **50–69.99 "Moderate match"** (warning), **<50 "Limited match"** (neutral). Never red. Props add `provisional?: boolean` (dashed outline + "Provisional"). The text always includes the number ("82 · Good match"), so colour is never the only signal. `pending` → spinner "Checking…". `stale` → dashed border + tooltip "Your profile changed. Re-check." Shared by applicant and recruiter. |
 | `CheckFitPanel` | `jobId`, `initial?: FitEvaluationDTO` | `POST /api/v1/jobs/{jobId}/fit-evaluations`, poll `GET /api/v1/fit-evaluations/{id}` (`useFitEvaluation`) | States in §6.2. Rendered in a `Sheet` from `JobCard` and inline on job detail. |
-| `ConnectionsCallout` | `connections: {firstName,lastName,position}[]`, `total`, `companyName`, `hasLinkedInImport` | Fit response (F4) or RSC count | "3 connections work at Stripe: Sarah L., Alex M. +1". Shows up to 3 names, with "Show all" opening a list. Without an import: "Upload your LinkedIn export to see connections" linking to `/profile`. **No Request Intro** (Later). Applicant-only. |
+| `ConnectionsCallout` | `connections: {firstName,lastName,position}[]`, `total`, `companyName`, `hasLinkedInImport` | `GET /api/v1/jobs/{jobId}/connections` (F4, D-22) or RSC count | "3 connections work at Stripe: Sarah L., Alex M. +1". Shows up to 3 names, with "Show all" opening a list. Without an import: "Upload your LinkedIn export to see connections" linking to `/profile`. **No Request Intro** (Later). Applicant-only. |
 | `FileDropzone` | `accept: string[]`, `maxBytes`, `multiple`, `onFiles(files)`, `state: idle|uploading|processing|done|error`, `progress?`, `error?` | local | Accessible button + hidden input, plus drag-and-drop. Client checks of extension and size (server re-checks magic bytes). Mono filename. Replace / Remove actions. |
 | `LinkedInImportStatus` | `importId` | poll `GET /api/v1/linkedin-imports/{id}` | Checklist of the 5 files (present/missing), phase text, final counts ("1,428 connections across 342 companies · 37 positions · 24 skills · 3 education"). |
 | `ResumeCard` | `resume {fileName, sizeBytes, mimeType, parseStatus}` | `resumes` row + poll `GET /api/v1/resumes/{id}` while not terminal | Stitch onboarding card: file icon, name, size, Replace. |
@@ -278,7 +278,7 @@ Role homes: applicant `/jobs`, recruiter `/recruiter/jobs`, admin `/admin/compan
 | `JobStatusChip` | `status: job_status` | `jobs.status` | Draft (neutral), Open (success), Closed (muted), Archived (muted). |
 | `ApplicationTimeline` | `events: {toStatus, at}[]` | `my_applications` timestamps (applicant) / `application_events` (recruiter) | Vertical list. The applicant view never shows notes or actors. |
 | `MetricCard` | `label`, `value`, `hint?`, `icon` | RSC counts | Reduced set only (§7). |
-| `EmptyState` / `ErrorState` | `title`, `body`, `action?` | – | Used by every list. `ErrorState` shows `request_id` in mono for support. |
+| `EmptyState` / `ErrorState` | `title`, `body`, `action?` | – | Used by every list. `ErrorState` shows `requestId` in mono for support. |
 | `*Skeleton` | – | – | `JobCardSkeleton`, `ApplicantRowSkeleton`, `TableSkeleton`. Match the final layout to avoid CLS. |
 
 ### 4.2 Recruiter-only components (`components/recruiter/`)
@@ -287,7 +287,7 @@ Role homes: applicant `/jobs`, recruiter `/recruiter/jobs`, admin `/admin/compan
 |---|---|---|---|
 | `JobForm` | `mode: 'create'|'edit'`, `defaultValues`, `lockedFields?: ('tokenCost'|'isTechnical')[]` | server actions `createJob`, `updateJob`, `publishJob`; zod `jobInputSchema` | Sections (Stitch numbering kept): **1 Role overview** (title, location, work mode). **2 Description & requirements** (two Markdown textareas with live char count). **3 Technical screening** (`is_technical` checkbox: "Require a public GitHub repo. AI rates Security, Organization, Performance, Testing (1–10). Applicants don't see ratings."). **4 Credit cost** (`TokenCostSelector`). Sticky right column: live `JobCard` preview + "Publish" / "Save as draft". |
 | `ApplicantRow` | `row: ApplicantRankingRow`, `isTechnical`, `onStatusChange` | first page via RSC from `job_applicant_rankings`; more pages via `GET /api/v1/jobs/{jobId}/applicants` | Stitch candidate card, trimmed: rank #, avatar, name, headline, `MatchScoreBadge`, applied-ago, `StatusChip`, compact `RepoScoreCard` (technical only), "Spent N credits", actions **Shortlist**, **Reject** and **View application**. The whole row is not one link: the name is the link, and buttons are separate. |
-| `RepoScoreCard` | `evaluation: {status, security, organization, performance, testing, rationale?, repoUrl, commitSha?}`, `variant: 'compact'|'full'` | `repo_evaluations` via ranking view / detail RSC | 4 cells (Security, Organization, Performance, Testing) with `x / 10`, plus average. `full` adds per-category rationale, repo link and SHA (mono). `pending` → "Reviewing repository…". `failed` → warning "Review failed: ranked on fit only". **Never imported by applicant code.** |
+| `RepoScoreCard` | `evaluation: {status, security, organization, performance, testing, rationale?, repoUrl, commitSha?}`, `variant: 'compact'|'full'` | `repo_evaluations` via ranking view / detail RSC | 4 cells (Security, Organization, Performance, Testing) with `x / 10`, plus average. `full` adds per-category rationale, repo link and SHA (mono). `pending` → "Reviewing repository…". `failed` → warning "Review unavailable: listed under Incomplete" (MASTER_PLAN D-06). **Never imported by applicant code.** |
 | `RankBreakdown` | `rank: RankedApplicant['rank']`, `confidence`, `github` | `RankedApplicant` (applicant-ranking §2.8) | "Rank score 86.33 = 70% × fit 90 + 30% × GitHub 77.8 (8.00 / 10 scaled 1–10 → 0–100)". The list shows rounded integers, the breakdown shows 2 decimals. Tier 1 shows "Provisional: ranked below complete applicants until the GitHub review finishes". Tier 2 shows "Fit score pending". |
 | `ApplicantFilters` | `status`, `sort`, `minConfidence`, `github`, `includeIncomplete`, `counts`, `isTechnical` | URL search params | Status tabs **Active** (default `submitted,shortlisted`) / Shortlisted / Rejected / Withdrawn with counts. Sort: Rank, Fit score, GitHub score (technical only), Newest, Oldest. "Min fit" select (Any / 50+ / 70+ / 85+, matching the bands). GitHub review multi-select (technical only). "Show incomplete" switch. Every change resets the cursor. The cursor is never put in the URL. |
 | `StatusActions` | `applicationId`, `status` | server action `setApplicationStatus` | Shortlist (one click, optimistic via `useOptimistic`). Reject opens a confirm dialog ("The applicant will be notified by email."). The F10 transition matrix decides which buttons appear. On shortlisted applications, the detail page also shows **Reveal email** (`revealContact` → `get_applicant_contact`, D2): the email appears with Copy and `mailto:`, plus the caption "Reveals are logged". It is fetched on click, never cached, and never shown in the list. |
@@ -338,7 +338,7 @@ One `QueryClient` per browser session, created in `app/providers.tsx`. Defaults:
 | `['fit-evaluation', id]` | `GET /api/v1/fit-evaluations/{id}` | Polling (§5.3) |
 | `['linkedin-import', id]` | `GET /api/v1/linkedin-imports/{id}` | Polling, 1.5 s |
 | `['resume', id]` | `GET /api/v1/resumes/{id}` | Polling, 1.5 s |
-| `['applicants', jobId, {status, sort}]` | `GET /api/v1/jobs/{jobId}/applicants` | `useInfiniteQuery` with `next_cursor`. Page 1 is seeded from the RSC. Invalidated after a status change. |
+| `['applicants', jobId, {status, sort}]` | `GET /api/v1/jobs/{jobId}/applicants` | `useInfiniteQuery` with `nextCursor`. Page 1 is seeded from the RSC. Invalidated after a status change. |
 
 ### 5.3 Polling for async evaluations
 
@@ -376,9 +376,9 @@ In `ApplyDialog` → `useMutation`:
 
 ### 5.7 Direct uploads (`useDirectUpload`)
 
-1. `POST /api/v1/uploads/{resume|linkedin}/init` `{fileName, mimeType, sizeBytes}` (or a list of files for CSVs) → `{uploadId, signedUrl(s), path(s)}`.
+1. Init (MASTER_PLAN D-27): `POST /api/v1/resumes/uploads` `{name, size, mimeType}` → `{resumeId, signedUrl, token, path, expiresAt}`, or `POST /api/v1/linkedin-imports` `{source, files:[{name, size}]}` → `{importId, uploads:[{name, path, signedUrl, token}], expiresAt}`.
 2. XHR `PUT` to each signed URL. `upload.onprogress` drives `<Progress>`. Abort on unmount or Remove.
-3. `POST .../complete {uploadId}` → `{importId}` or `{resumeId}` → start polling (§5.3).
+3. `POST /api/v1/resumes/{resumeId}/complete` or `POST /api/v1/linkedin-imports/{importId}/complete` → `202` → start polling (§5.3).
 
 Errors: an expired signed URL means re-init once, then show an error. A 413/415 from Storage maps to the same copy as the client check.
 
@@ -388,12 +388,12 @@ Errors: an expired signed URL means re-init once, then show an error. A 413/415 
 
 ### 6.1 Sign-up → onboarding → dashboard
 
-1. `/sign-up`: segmented control **Job seeker | Recruiter** (default Job seeker, persisted in the `?role=` param). Buttons: Continue with LinkedIn, Continue with Google, then email + password (zod: ≥ 8 chars). The chosen role is passed as `options.data.intended_role` (email) or `redirectTo=/auth/callback?intended_role=…` (OAuth) **only as a pre-selection**.
+1. `/sign-up`: segmented control **Job seeker | Recruiter** (default Job seeker, persisted in the `?role=` param). Buttons: Continue with LinkedIn, Continue with Google, then email + password (zod: ≥ 10 chars, matching Supabase config). The chosen role is passed as `options.data.role` (email) or the signed `np_role_intent` cookie set by `startOAuth` (OAuth), per backend.md B2 and MASTER_PLAN D-25. If no role arrives, `/onboarding/role` asks for it.
 2. Email sign-up → `/verify-email` ("We sent a link to x@y. Didn't get it? Resend in 60 s."). OAuth goes straight to the callback.
-3. `/onboarding/role`: two large radio cards, pre-selected from `intended_role`. Copy: "You can't change this later." Recruiter card: "Use your work email so we can verify your company." Server action `selectRole` → `refreshSession()` → redirect.
+3. `/onboarding/role` (only when `app_role` is still null): two large radio cards. Copy: "You can't change this later." Recruiter card: "Use your work email so we can verify your company." Server action `selectRole` → `refreshSession()` → redirect.
 4. **Applicant** `/onboarding/applicant` (Stitch screen):
    - Stepper: ✓ Account & role · **2 Upload data** · 3 Review & finish.
-   - **LinkedIn card**: `FileDropzone` accepting `.zip` or multiple `.csv`, ZIP ≤ 50 MB / CSV ≤ 10 MB each (Backend to confirm limits). Before upload, the client lists recognised files (ZIP entries are listed via `fflate` `unzip` with a filter, without reading full content) as a 5-item checklist: Profile, Positions, Skills, Education, Connections. Missing files are fine, with a warning "Without Connections.csv we can't show who you know at companies." Phases: *Uploading 45%* → *Parsing your export…* (indeterminate, polls `linkedin_imports.status`) → *Done* with counts. `failed` shows `error` plus "Try individual CSVs instead". Help text: "LinkedIn → Settings → Data privacy → Get a copy of your data. Pick the larger archive, or select Connections, Positions, Profile, Skills, Education." Privacy note: "We store your connections' names, companies and titles only, never their emails, and never show them to recruiters."
+   - **LinkedIn card**: `FileDropzone` accepting `.zip` or multiple `.csv`, ZIP ≤ 50 MB / CSV ≤ 20 MB each (linkedin-ingestion §2.3). Before upload, the client lists recognised files (ZIP entries are listed via `fflate` `unzip` with a filter, without reading full content) as a 5-item checklist: Profile, Positions, Skills, Education, Connections. Missing files are fine, with a warning "Without Connections.csv we can't show who you know at companies." Phases: *Uploading 45%* → *Parsing your export…* (indeterminate, polls `linkedin_imports.status`) → *Done* with counts. `failed` shows `error` plus "Try individual CSVs instead". Help text: "LinkedIn → Settings → Data privacy → Get a copy of your data. Pick the larger archive, or select Connections, Positions, Profile, Skills, Education." Privacy note: "We store your connections' names, companies and titles only, never their emails, and never show them to recruiters."
    - **Resume card**: `FileDropzone` (PDF/DOCX, ≤ 5 MB) → `ResumeCard` with parse status *Extracting text…* → ✓. A failed parse blocks Continue ("We couldn't read this file. Try exporting it as PDF.").
    - **Preferences** (optional): target seniority, location preference → `applicant_profiles`.
    - **Credits card** (Stitch bottom banner, fixed copy): "10 free credits every month. Jobs cost 1–3 credits. Unused credits don't roll over."
@@ -407,7 +407,7 @@ Errors: an expired signed URL means re-init once, then show an error. A 413/415 
 2. If the RSC already has a non-stale succeeded fit, show it immediately with "Checked {relative time}" and a **Re-check** link.
 3. Otherwise `POST /api/v1/jobs/{jobId}/fit-evaluations`:
    - `200` → render the result.
-   - `202 {id, connections}` → render **ConnectionsCallout immediately**, plus a score skeleton with "Comparing your resume and LinkedIn to the requirements…" (live region). Polling as in §5.3.
+   - `202 {id}` → render **ConnectionsCallout immediately** (its own parallel `GET /api/v1/jobs/{jobId}/connections`), plus a score skeleton with "Comparing your resume and LinkedIn to the requirements…" (live region). Polling as in §5.3.
    - `429 RATE_LIMITED` → "You've used today's 20 free fit checks. More tomorrow."
 4. Result layout: large `MatchScoreBadge` (score / 100 + band) → explanation (plain text, max ~120 words, `whitespace-pre-line`) → `ConnectionsCallout` → footer disclaimer "AI estimate based on your resume and LinkedIn export. Recruiters see their own evaluation." → primary **Apply (2 credits)** which opens `ApplyDialog`.
 5. `failed` → `ErrorState` "We couldn't check this job right now", with Retry.
@@ -430,7 +430,7 @@ Entry: **Apply** on `/jobs/[jobId]` or in `CheckFitPanel`. Disabled with a reaso
 ### 6.4 Recruiter: post a job
 
 1. `/recruiter/jobs/new` → `JobForm` (create). The sticky preview reuses the applicant `JobCard` (preview mode, no CTAs) so the recruiter sees exactly what candidates see.
-2. Fields: title (required, ≤ 120), location (optional), work mode (radio), description (required, Markdown, ≤ 10k), requirements (required, Markdown, ≤ 5k), **Technical role** checkbox, **Credit cost** selector 1/2/3 (default 2; help: "Higher cost means fewer, more deliberate applications. Applicants get 10 credits a month.").
+2. Fields: title (required, 5–120), location (optional), work mode (radio), description (required, Markdown, 50–20,000), requirements (required, Markdown, 1–10,000); limits come from the shared `jobInputSchema` (MASTER_PLAN D-31), **Technical role** checkbox, **Credit cost** selector 1/2/3 (default 2; help: "Higher cost means fewer, more deliberate applications. Applicants get 10 credits a month.").
 3. **Save as draft** → `createJob({status:'draft'})`. **Publish** → `createJob` + `publishJob` (one server action `createAndPublishJob`) → redirect to `/recruiter/jobs/[jobId]` with toast "Job published".
 4. Edit: the same form. `tokenCost` and `isTechnical` are locked when applications exist (F9, enforced by the `jobs_freeze_pricing` trigger). The tooltip reads: "Cost is locked once candidates have applied. Close this job and post a new one to change it." Close job → confirm dialog → `status='closed'` (applicants can no longer apply, existing applications stay reviewable, **no refund**). Archive job → confirm dialog that states "{n} applicants you haven't acted on will get their credits back" → `archiveJob` (token-system §2.4). Delete is offered only for drafts with no applications.
 
@@ -440,7 +440,7 @@ Entry: **Apply** on `/jobs/[jobId]` or in `CheckFitPanel`. Disabled with a reaso
 2. Metric strip (MVP set), from `counts`: **Active**, **New**, **Shortlisted**, and for technical jobs **Incomplete** (pending or failed GitHub reviews).
 3. **Fairness notice** (applicant-ranking §2.10, verbatim) as an info `Alert` above the list, and repeated as one line next to the score on the detail page: *"Scores are AI-generated estimates to help you prioritise. They can be wrong or incomplete. Review each candidate's resume before you decide. Never reject a candidate on score alone."* It cannot be dismissed. A user may collapse it to one line, and that choice is stored in `localStorage`. When `job.mixedPromptVersions` is true, a second notice reads: "Some applicants were scored with an earlier model version; scores may not be directly comparable."
 4. `ApplicantFilters` (see §4.2), plus a caption "Ranked by 70% fit + 30% GitHub" (technical) or "Ranked by fit score" (non-technical). Params go into the URL.
-5. List: `ApplicantRow`s with `rank.position` ("#3") shown, but only under `sort=rank`. Page 1 (20 rows) is read in the RSC by calling `job_applicant_rankings_page` + `job_ranking_version` + counts through **one shared loader** (`lib/ranking/loadApplicantsPage.ts`) that the API route also uses, so both return the same shape. The client continues with **Load more** (`useInfiniteQuery`, `next_cursor`, `rankingVersion` sent back on every page). If a page returns `rankingChanged: true`, a banner reads "Rankings updated · Refresh" and the list never reorders by itself.
+5. List: `ApplicantRow`s with `rank.position` ("#3") shown, but only under `sort=rank`. Page 1 (20 rows) is read in the RSC by calling `job_applicant_rankings_page` + `job_ranking_version` + counts through **one shared loader** (`lib/ranking/loadApplicantsPage.ts`) that the API route also uses, so both return the same shape. The client continues with **Load more** (`useInfiniteQuery`, `nextCursor`, `rankingVersion` sent back on every page). If a page returns `rankingChanged: true`, a banner reads "Rankings updated · Refresh" and the list never reorders by itself.
 6. **Tiers** (only under `sort=rank`): the list is split into labelled groups: "Complete (n)", "Incomplete: GitHub review pending or unavailable (n)" and "Not scored yet (n)". Tier 1 rows show a provisional `MatchScoreBadge` with the badge "Provisional · GitHub review in progress" (pending/running) or "GitHub review unavailable: {failure copy}" (failed, mapped from Backend's `failure_code` in `lib/copy.ts`). Tier 2 rows show "Fit score pending" or "Fit score unavailable". Under other sorts there are no group headers, only the badges.
 7. **Shortlist**: optimistic chip change → server action → toast with no undo (the email is queued). **Reject**: confirm dialog → server action. On error, revert and show a toast with the message.
 8. **View application** → detail page: `RankBreakdown`, fit explanation, `RepoScoreCard full` (summary and evidence per category; evidence paths in mono, **plain text, never links or Markdown**, because the content comes from an untrusted repo), `ApplicationTimeline`, `StatusActions` (+ Reveal email when shortlisted) and `ResumeViewer` (right column ≥ lg, a "Resume" tab on mobile). Prev/Next applicant arrows keep the current sort and filters (they read the same cursor list from the query cache, and fall back to back-to-list).
@@ -457,7 +457,7 @@ Entry: **Apply** on `/jobs/[jobId]` or in `CheckFitPanel`. Disabled with a reaso
 | `ALREADY_APPLIED` / `JOB_NOT_OPEN` / `INSUFFICIENT_TOKENS` / `REPO_NOT_ACCESSIBLE` / `IDEMPOTENCY_KEY_REUSED` | §5.4 |
 | `RATE_LIMITED` | Inline message with the retry time from `details.retryAfter` |
 | `CONFLICT` | Toast with the message, then refresh |
-| `INTERNAL` | `ErrorState` with the `request_id` and Retry |
+| `INTERNAL` | `ErrorState` with the `requestId` and Retry |
 
 ### 6.7 Empty / loading / error states
 
@@ -471,7 +471,7 @@ Entry: **Apply** on `/jobs/[jobId]` or in `CheckFitPanel`. Disabled with a reaso
 | Onboarding uploads | Progress bar → indeterminate "Parsing…" | Dropzone | File-specific message + Retry/Replace |
 | `/recruiter/jobs` | Table skeleton | "Post your first job" + CTA | `error.tsx` |
 | Ranked applicants | `ApplicantRowSkeleton` ×5 | Open job: "No applicants yet. Share the job link." Draft: "Publish this job to receive applicants." | `error.tsx` |
-| RepoScoreCard | "Reviewing repository…" | – | "Review failed: ranked on fit only" (warning) |
+| RepoScoreCard | "Reviewing repository…" | – | "Review unavailable: listed under Incomplete" (warning) |
 | ResumeViewer | Text panel skeleton | "Resume removed by applicant" | Download: "Couldn't get the file", Retry (new signed URL) |
 | TokenBalancePill | Uses RSC `initialData`, so never empty | – | Shows the last known value + `aria-describedby` "may be out of date" |
 
@@ -545,7 +545,7 @@ Playwright runs every E2E flow at **1280×800** and **390×844**.
 
 | Layer | Tooling | What |
 |---|---|---|
-| Unit / component | **Vitest + Testing Library + jsdom**, **MSW** for `/api/v1` | `MatchScoreBadge` band boundaries (49/50/74/75, null, pending, stale). `StatusChip` labels per audience. `TokenBalancePill` optimistic decrement and **rollback** on 402/409/500. `ApplyDialog`: key stable across retry, **new key when the URL changes**, step order, the confirm button disabled during the request, each error code → UI. `FileDropzone` rejects >5 MB and wrong extensions, keyboard activation. `useFitEvaluation` interval backoff and stop (fake timers). `JobForm` zod errors + locked fields. `apiFetch` error parsing. Copy terminology (`formatCredits`). |
+| Unit / component | **Vitest + Testing Library + jsdom**, **MSW** for `/api/v1` | `MatchScoreBadge` band boundaries (49.99/50/69.99/70/84.99/85, null, pending, stale). `StatusChip` labels per audience. `TokenBalancePill` optimistic decrement and **rollback** on 402/409/500. `ApplyDialog`: key stable across retry, **new key when the URL changes**, step order, the confirm button disabled during the request, each error code → UI. `FileDropzone` rejects >5 MB and wrong extensions, keyboard activation. `useFitEvaluation` interval backoff and stop (fake timers). `JobForm` zod errors + locked fields. `apiFetch` error parsing. Copy terminology (`formatCredits`). |
 | Boundary | ESLint rule test + a build-time check | `grep` of the applicant route bundles (`.next/static/chunks/app/(applicant)`) for `securityScore`/`RepoScoreCard` must be empty. |
 | E2E | **Playwright** against local Supabase + Inngest dev + OpenRouter mocked (MSW / fixture server), seeded users | (1) Sign-up email → verify (Inbucket) → role → applicant onboarding with fixture ZIP + PDF → `/jobs` shows 10 credits. (2) Recruiter sign-up with a work email → pending → admin approves → verified → post a technical job (cost 3). (3) Check fit: 202 → poll → score + connections. Second click is a cache hit. (4) Apply to a technical job: bad repo → 422 field error, nothing spent. Good repo → balance 10→7, status page, double-click creates a single application. (5) Insufficient credits disables Apply. (6) Recruiter ranked list: order matches the seeded ranking, sort/filter via URL, shortlist + reject (confirm), tier groups and provisional badges on the applicant-ranking §6.1 fixture (order A1…A12), the fairness notice visible, resume text shown and Download issuing a signed URL, Reveal email only after shortlisting, a "Rankings updated" banner when a seeded review completes between pages. (7) Applicant sees "Shortlisted" and **no ratings anywhere** (asserts the DOM and network responses contain no `security`). (8) Middleware redirects matrix (§3.3). Every flow runs at desktop + mobile, with axe. |
 | Visual | Playwright `toHaveScreenshot` | **Phase 1:** for the 5 Stitch screens, seed data that mirrors the mock and capture our page at 1280 px. The designer and frontend review it side by side against `design/stitch/*/screen.png` (checklist: spacing, type scale, colours, radii), since pixel diffs against Stitch can't pass because the content intentionally differs. **After sign-off:** our own screenshots become baselines (threshold 0.1%) and catch regressions. Deterministic fonts, frozen time, mocked avatars. |
@@ -571,4 +571,27 @@ Playwright runs every E2E flow at **1280×800** and **390×844**.
 
 ## 10. Review notes
 
-_Placeholder: Backend and Lead reviews go here._
+_No separate review notes were filed. Cross-review items are tracked in §1.1 and resolved below._
+
+## Resolution
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| F1 claims | `app_role`, `onboarded`, `membership_status` (D-24). §1.1 has been updated. |
+| F2 location and work mode | **MVP.** `jobs.location` and `jobs.work_mode` (D-21). Compensation is Later. |
+| F3 / F17 onboarding | **F3 stands (D-08).** Resume required, LinkedIn skippable. `mark_onboarded()` has been changed to match. |
+| F4 connections | **Separate parallel call (D-22).** §1.1, §4.1 and §6.2 have been updated. |
+| F5 latest fit per job | **`my_latest_fits(p_job_ids)`** (D-23). The app computes staleness. |
+| F6 direct uploads | **Accepted.** The endpoint names are Backend's (D-27). §5.7 has been updated. |
+| F7 terminology | **"Credits" in the UI by default (D-35)**, confirmation pending with the product owner. |
+| F8–F10, F12–F14 | Resolved as marked. Withdraw is MVP (D-19). |
+| F11 pending recruiters | **Drafts allowed (D-09).** §1.1 and §3.3 have been updated. |
+| F15 admin queue | **MVP**, built in Phase 2 as a minimal table (MASTER_PLAN §11). |
+| F16 resume viewer | **Text-first + download (D-13).** |
+| Sign-up role and password | Backend's B2 mechanism (D-25). Minimum password length is 10. §6.1 has been updated. |
+| Job field limits, CSV size | The shared zod schemas are the single source (D-31). §6.1 and §6.4 have been updated. |
+| Failed review copy | "Review unavailable: listed under Incomplete" (D-06). §4.2 and §6.7 have been updated. |
+| Dark theme accent change | **Later**. Logged as a product-owner question. |
+| Repo ownership | `ApplyDialog` step 1 adds a required checkbox: "This repository is my own work, or I am a major contributor" (`repoOwnershipAttested`, D-16). `RepoScoreCard` shows `repoFullName` with "Ownership not verified". |

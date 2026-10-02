@@ -273,9 +273,9 @@ admin_adjust_tokens(p_applicant_id uuid, p_amount int, p_reason text) returns js
 
 | Method | Path | Auth | Request | Response | Errors |
 |---|---|---|---|---|---|
-| GET | `/api/v1/tokens/balance` | applicant | — | `200 {period, granted, spent, refunded, adjusted, balance, resetsAt}` | 401, 403 |
-| GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | — | `200 {data:[{id, kind, amount, period, applicationId, jobTitle, reason, createdAt}], next_cursor}` (newest first, all periods) | 401, 403, 422 |
-| POST | `/api/v1/applications` | applicant, onboarded; header `Idempotency-Key` (uuid, **required**) | `{jobId, githubRepoUrl?, expectedTokenCost?}` | `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 400 (missing key), 401, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 402, 422 `VALIDATION_FAILED`/`REPO_NOT_ACCESSIBLE`, 429 |
+| GET | `/api/v1/tokens/balance` | applicant | — | `200 {period, granted, spent, refunded, adjusted, total, balance, resetsAt}` (`total = granted + refunded + adjusted`, D-11) | 401, 403 |
+| GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | — | `200 {data:[{id, kind, amount, period, applicationId, jobTitle, reason, createdAt}], nextCursor}` (newest first, all periods) | 401, 403, 422 |
+| POST | `/api/v1/applications` | applicant, onboarded; header `Idempotency-Key` (uuid, **required**) | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation `true` required for technical jobs, D-16) | `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 402, 422 `VALIDATION_FAILED` (incl. missing/invalid key: `details.fields.idempotencyKey`)/`REPO_NOT_ACCESSIBLE`, 429 |
 | server action | `archiveJob(jobId)` | verified company member | `{jobId}` | `ActionResult<{refundsQueued: n}>` | FORBIDDEN, NOT_FOUND, CONFLICT |
 | server action | `updateJob(...)` with a changed `tokenCost` | verified company member | — | — | `CONFLICT {reason:'pricing_locked'}` |
 | server action | `adminAdjustTokens(applicantId, amount, reason)` | admin (aal2) | — | `ActionResult<{balance}>` | FORBIDDEN, VALIDATION_FAILED |
@@ -283,9 +283,9 @@ admin_adjust_tokens(p_applicant_id uuid, p_amount int, p_reason text) returns js
 Rate limit on `POST /api/v1/applications`: 10/min per user (backend.md §2.6).
 
 **Frontend contract (balance UI):**
-- The navbar pill reads `balance` / `granted`, e.g. "8 / 10 tokens".
+- The navbar pill reads `balance` / `total`, e.g. "8 / 10 credits" (UI says "credits", D-35). `total = granted + refunded + adjusted` is returned by `GET /api/v1/tokens/balance`, so it can exceed 10 after a refund (D-11).
 - The Apply dialog shows the cost, the current balance and the balance after applying. It disables Confirm when `balance < cost` and shows the reset date.
-- The dialog generates the `Idempotency-Key` once **when it opens** and reuses it on retry. A new key is generated only after the dialog closes.
+- The dialog generates the `Idempotency-Key` once **when it opens** and reuses it on retry. A new key is generated when the dialog closes **or when the request body changes** (e.g. the GitHub URL is corrected after `REPO_NOT_ACCESSIBLE`), per MASTER_PLAN D-10.
 - The dialog sends `expectedTokenCost` with the cost it displayed. On `CONFLICT token_cost_changed`, it re-renders with the new cost and asks for confirmation again.
 
 ---
@@ -337,7 +337,7 @@ Rate limit on `POST /api/v1/applications`: 10/min per user (backend.md §2.6).
 6. **Apply vs cost change:** apply with `expectedTokenCost=2` ∥ update to 3. Either 201 at cost 2 (and the update then fails with `pricing_locked`), or `CONFLICT token_cost_changed`.
 7. **Refund ∥ apply** for the same applicant → the final balance equals the arithmetic expectation.
 
-**Route handler tests (Vitest):** a missing or invalid `Idempotency-Key` → 400 `VALIDATION_FAILED`. HINT → HTTP mapping. The Inngest send is called only when `replayed=false`, and a send failure still returns 201.
+**Route handler tests (Vitest):** a missing or invalid `Idempotency-Key` → 422 `VALIDATION_FAILED` with `details.fields.idempotencyKey` (MASTER_PLAN D-10). HINT → HTTP mapping. The Inngest send is called only when `replayed=false`, and a send failure still returns 201.
 
 **E2E (Playwright, Frontend owns):** apply decrements the navbar balance, a double-click creates a single application, the insufficient-tokens state renders the reset date.
 
@@ -388,4 +388,22 @@ _Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend
 - Items 1 (UI says "credits"), 2 (new key when the body changes), 3 (400 vs 422 for a missing key) and 4 (pill denominator / `total`) are **still open**.
 
 ## Resolution
-<!-- Lead -->
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| T1/T2 virtual grant, no grant cron | **Accepted (D-02).** `get_token_balance()` is read-only and counts a missing grant as +10. Only `apply_to_job` and `admin_adjust_tokens` materialize it. There is no monthly grant cron. MASTER_PLAN §4 has been updated. |
+| T3 pricing freeze, T4 refund on archive, T5 no refund on a failed review, T7 refund credited to the current period | **Accepted** (D-36). |
+| T6 withdraw | **Accepted and in MVP (D-19).** Withdrawal is free, credits are not refunded, and the applicant cannot re-apply to the same job. |
+| T8 `p_expected_cost` | **Accepted (D-03).** The final signature is `apply_to_job(p_job_id, p_idempotency_key, p_github_repo_url default null, p_expected_cost default null)`. |
+| Data 1: `token_ledger.application_id` cascade | **Accepted.** It is ON DELETE CASCADE, with a pgTAP test in `09_cascade`. |
+| Data 2: `search_path` | **Data's convention wins.** Every SECURITY DEFINER function uses `set search_path = ''` with fully qualified names. The snippets in this doc show intent, not final SQL. |
+| Data 3: repo URL regex and canonical URL | **Accepted.** The `applications.github_repo_url` CHECK is the single source of truth. The route handler canonicalizes the URL (`lib/github/repo.ts`) **before** the RPC, so `request_hash` is computed over the canonical form. |
+| Data 4: admin MFA | **Accepted (D-18).** `admin_adjust_tokens` asserts `public.is_admin()`, which requires `aal2`. |
+| Data 5–8 | **Accepted** as written. |
+| Frontend 1: "credits" in the UI | **Accepted as the default (D-35)**, pending the product owner (MASTER_PLAN §15). Code, DB, API and error codes keep `token`. |
+| Frontend 2: new key when the body changes | **Accepted (D-10).** §4 has been updated. |
+| Frontend 3: missing `Idempotency-Key` | **422 `VALIDATION_FAILED`** with `details.fields.idempotencyKey` (D-10). The API never returns 400. §4 and §6 have been updated. |
+| Frontend 4: pill denominator | **The API returns `total = granted + refunded + adjusted` (D-11).** The pill renders `balance / total`, which can exceed 10 in a month that received a refund. The tooltip explains the refund. |
+| Frontend 5: withdraw | Closed by D-19. |

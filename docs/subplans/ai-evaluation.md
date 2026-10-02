@@ -533,7 +533,7 @@ create index ai_usage_subject on ai_usage (subject_id);
 | GET | `/api/v1/fit-evaluations/{id}` | owner applicant | — | `200 {id, jobId, status, confidenceScore?, band?, explanation?, requirements?, subScores?, error?: 'evaluation_failed', createdAt, completedAt}`, with `Cache-Control: no-store` | 401, 404 (not owner) |
 | GET | `/api/v1/jobs/{jobId}/connections` | applicant | — | `200 {data:[{id, firstName, lastName, position, companyName, connectedOn, matchKind}], exactCount, possibleCount, asOf}` (contract owned by linkedin-ingestion.md §4; Data's `connections_at_company(job.company_id)`, user-scoped client) | 401, 403, 404 |
 | POST | `/api/v1/repos/validate` | applicant | `{url}` | `200 {canonicalUrl, fullName, defaultBranch, sizeKb, language}` | 422 `REPO_NOT_ACCESSIBLE {reason}`, 429 (20/h) |
-| GET | `/api/v1/recruiter/applications/{applicationId}` | verified company member of the job's company | — | `200 {application, applicant:{name, headline}, fit:{score, band, explanation, requirements, subScores}, repo?:{status, commitSha, repoUrl, scores:{security, organization, performance, testing}, rationale, flags, signals:{testFileCount, hasCi, …}, failureReason?}, rankScore}` | 401, 403, 404 |
+| GET | `/api/v1/jobs/{jobId}/applicants/{applicationId}` (renamed, MASTER_PLAN D-26) | verified company member of the job's company | — | `200 {application, applicant:{name, headline}, fit:{score, band, explanation, requirements, subScores}, repo?:{status, commitSha, repoUrl, scores:{security, organization, performance, testing}, rationale, flags, signals:{testFileCount, hasCi, …}, failureReason?}, rankScore}` | 401, 403, 404 |
 | server action | `adminRetryEvaluation({kind:'fit'\|'repo', id})` | admin (aal2) | — | `{status:'pending'}`. Resets attempts and emits the event. Audited in `audit_log` (`admin.repo_eval_rerun`) | FORBIDDEN, CONFLICT (still running) |
 
 Polling: the client polls `GET /fit-evaluations/{id}` every 2 s for at most 60 s, then shows "Taking longer than usual". p95 target for a fit is under 12 s.
@@ -545,7 +545,7 @@ Polling: the client polls `GET /fit-evaluations/{id}` every 2 s for at most 60 s
 | # | Case | Handling |
 |---|---|---|
 | X1 | Check fit before the resume is parsed | `409 CONFLICT {reason:'resume_not_ready'}`. Onboarding already requires a parsed resume. |
-| X2 | LinkedIn import missing Positions/Skills (CSV subset uploaded) | Evaluate with what exists. `insufficient_candidate_data` only if resume text < 300 chars **and** there are no positions. |
+| X2 | LinkedIn import missing Positions/Skills (CSV subset uploaded), or **no import at all** (applicant skipped it, MASTER_PLAN D-08) | Evaluate with what exists: empty `<positions>`, `<skills>` and `<education>` blocks plus `<computed>linkedin_import=none</computed>`; `linkedin_import_id` is null in the hash. `insufficient_candidate_data` only if resume text < 300 chars **and** there are no positions. |
 | X3 | Job edited after a cached fit | `job.updated_at` is in the hash → cache miss → new evaluation. The old row stays (history). |
 | X4 | Resume replaced after Apply | The application keeps its linked `fit_evaluation_id` snapshot. The ranking does not change retroactively. |
 | X5 | Both primary and fallback models down | Fit → `failed` with the UI message "We couldn't evaluate right now. Try again in a few minutes" (does not count against the rate limit). Repo → Inngest retries (backoff up to ~1 h), then `failed: llm_failed`. Admin can retry. |
@@ -647,4 +647,21 @@ _Reviewer: Data. Context: [`sections/data.md`](../sections/data.md) §3.8, §4, 
 10. **`job_updated_at not null`:** fine. `input_hash` uses `jobs.updated_at`, which also changes on close/reopen, so those cause harmless cache misses. No change needed.
 
 ## Resolution
-<!-- Lead -->
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| A1 deterministic scoring, A2 cache key, A3 applicant sees the breakdown, A4 pin the SHA at review time, A6 no LLM resume parse, A7 recruiter-only injection flag | **Accepted.** |
+| A5 applicant review status | **Accepted in coarse form (D-07).** `my_applications.repo_review_status` is `pending`, `completed` or `failed`. `repo_review_reason` is only an applicant-fixable code (`not_found_or_private`, `too_large`, `too_many_files`, `archive_too_large`, `empty`, `no_reviewable_code`). Every other code collapses to `system`, and `integrity` is never shown to the applicant. |
+| §3.2 zipball | **Accepted (D-04).** Zipball plus fflate. The brief's "tarball" is corrected. |
+| X11 failed review | **Incomplete tier (D-06)**, not "confidence only". No refund. |
+| X2 missing LinkedIn data | Extended to "no import at all" (D-08). The prompt receives empty profile blocks, and `insufficient_candidate_data` still requires resume text under 300 characters with no positions. |
+| Data 1–2: explicit column selects, no `flags` to applicants | **Accepted.** No `select *` anywhere. |
+| Data 4: canonical URL | **Accepted.** The handler canonicalizes before `apply_to_job`, and the review cache keys on the canonical URL. |
+| Data 5: repo ownership | **Mitigated in MVP, verified Later (D-16).** Recruiters see `repo_meta.full_name` with an "Ownership not verified" label, plus the `likely_template_or_fork` flag. The Apply dialog requires the attestation checkbox "This repository is my own work, or I am a major contributor". The request field is `repoOwnershipAttested: true`, which the zod schema requires for technical jobs. Verification through GitHub account linking (`owner_matches_applicant`) is Later and a product-owner question. The review cache only saves our cost and does not change this risk. |
+| Data 6: `adminRetryEvaluation` | **Accepted.** It works on `failed` rows only, updates the same row (so `applications.fit_evaluation_id` stays valid), and returns `CONFLICT` for `succeeded` or in-flight rows. |
+| Data 7: evidence cap | **Accepted.** zod `evidence.max(300)` and the DB `pg_column_size` CHECK. |
+| Data 8: connections contract | **Accepted.** The contract is owned by linkedin-ingestion.md §4. Connections are fetched in parallel with the fit request and are never embedded in it (D-22). |
+| Data 9: detail endpoint | **Accepted and renamed (D-26)** to `GET /api/v1/jobs/{jobId}/applicants/{applicationId}`. It returns `rank.tier` and `isProvisional`. |
+| Models and prices | Accepted for planning. Verify prices on openrouter.ai before launch. The daily budget breaker default ($50) is a product-owner question. |

@@ -202,7 +202,7 @@ Everything here is form-driven UI, so it uses **server actions** (MASTER_PLAN §
 
 | Kind | Name / path | Auth | Input | Output | Errors |
 |---|---|---|---|---|---|
-| GET | `/api/v1/companies?query=&limit=` | recruiter | `query` ≥ 2 chars | `{data:[{id, name, website, logoUrl, domains:[...], verified:true}], next_cursor}` (verified companies only; matches name prefix or domain) | 401, 403, 422, 429 (30/min) |
+| GET | `/api/v1/companies?query=&limit=` | recruiter | `query` ≥ 2 chars | `{data:[{id, name, website, logoUrl, domains:[...], verified:true}], nextCursor}` (verified companies only; matches name prefix or domain) | 401, 403, 422, 429 (30/min) |
 | action | `checkWorkEmailDomain({email})` | recruiter | email | `{domain, blocked: bool, reason?, matchingCompany?: {id,name}}` (instant UX hint) | VALIDATION_FAILED |
 | action | `startCompanyClaim({name, website, workEmail?, evidence?, requestAdminReview?})` | recruiter, no active membership | — | `{next: 'check_email' \| 'verified' \| 'join' \| 'pending_review', companyId?, company?}` | VALIDATION_FAILED (`fields.workEmail: 'free_mail'`), CONFLICT (`already_member`), RATE_LIMITED |
 | action | `requestCompanyJoin({companyId, workEmail?, evidence?})` | recruiter, no active membership | — | `{next: 'check_email' \| 'pending_company_admin' \| 'pending_review'}` | NOT_FOUND, VALIDATION_FAILED (`domain_not_company`), CONFLICT, RATE_LIMITED |
@@ -213,7 +213,7 @@ Everything here is form-driven UI, so it uses **server actions** (MASTER_PLAN §
 | action | `approveMember({membershipId, approve, reason?})` | company admin | — | membership | FORBIDDEN, NOT_FOUND, CONFLICT |
 | action | `removeMember({membershipId, reason})` | company admin | — | membership | FORBIDDEN, CONFLICT (`last_company_admin`) |
 | action | `setCompanyAdmin({membershipId, isAdmin})` | company admin | — | membership | FORBIDDEN, CONFLICT (`last_company_admin`) |
-| **Admin** (all require `role='admin'` and `aal2`; RSC pages under `/admin/companies` read with the service-role client in `lib/supabase/admin.ts`) | | | | | |
+| **Admin** (all require `role='admin'` and `aal2`; RSC pages under `/admin/companies` read with the **user-scoped** client; `is_admin()` (role `admin` + `aal2`) RLS policies grant access (MASTER_PLAN D-18)) | | | | | |
 | RSC | `/admin/companies?tab=pending\|auto_verified\|memberships\|rejected` | admin | — | Queue rows: company, domains, claimant, `review_reason`, evidence, `name_normalized` collisions, age | FORBIDDEN |
 | action | `adminReviewCompany({companyId, decision: 'approve'\|'reject'\|'suspend', reason, verifyDomain?})` | admin | — | `{company, archivedJobIds}` (then emits `job/archived` per id) | FORBIDDEN, NOT_FOUND, CONFLICT (bad transition), VALIDATION_FAILED (reason required for reject/suspend) |
 | action | `adminReviewMembership({membershipId, approve, reason})` | admin | — | membership | same |
@@ -309,4 +309,19 @@ _Reviewer: Data. Context: [`sections/data.md`](../sections/data.md) §3.4, §4, 
 11. **Indexes added:** `work_email_verifications(membership_id)`, `(profile_id, created_at desc)`, partial `(expires_at) where consumed_at is null` for the purge, and `recruiter_memberships(company_id) where is_company_admin`.
 
 ## Resolution
-<!-- Lead -->
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| Approach | **Accepted (D-34).** Work-email domain plus magic link is the primary path, with admin approval as the fallback. LinkedIn is not a verification source, because its organization APIs need partner access. DNS TXT is Later. |
+| C1 auto-join, C2 auto-verify checks, C3 trust the confirmed auth email, C5 company admins | **Accepted.** |
+| C4 `verified_via` adds `company_admin` | **Accepted.** |
+| C6 admin MFA | **Accepted (D-18).** Every admin route, action and RLS policy requires `aal2` through `is_admin()`. |
+| §2.4 pending recruiters | **Accepted (D-09).** They may create and edit drafts. Publishing requires a verified membership and a verified company, enforced by `guard_job_update` and the `jobs_insert_member` policy. frontend.md F11 has been updated. |
+| `tldts` dependency | **Accepted**, and added to the MASTER_PLAN §2 stack. |
+| Data 1: no `citext` | **Accepted.** Use `text` plus `check (email = lower(email))`, and lowercase in the server action. |
+| Data 2: `is_company_member(p_company_id, p_require_verified default true)` + `is_company_admin(p_company_id)` | **Accepted.** Data's signature is canonical. The §3 RPC table's `p_require_admin` form is superseded. |
+| Data 3–5: one-directional CHECKs, `update_company_profile` RPC, delete domain rows | **Accepted.** `admin_remove_company_domain` DELETEs the row and logs `company.domain_removed`. |
+| Data 6: admin client | **Accepted (D-18).** Admin pages use the user-scoped client with `is_admin()` RLS. The service role is only for Inngest and audited support scripts. §4 has been updated. |
+| Data 7–11 | **Accepted.** The evidence-visibility copy goes into the onboarding form, and the blocklist ships in a migration, not in `seed.sql`. |

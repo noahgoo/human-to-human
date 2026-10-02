@@ -17,7 +17,7 @@
 | L2 | Re-upload of a single CSV: replace everything or merge per file? | **Replace all** (the task's rule). The new import becomes the whole dataset; datasets not in the new upload are removed. The UI warns before upload: "Your new upload doesn't include Positions.csv. Your current positions will be removed." | Frontend (warning copy) |
 | L3 | If one file in a multi-file upload fails to parse, do we keep the others? | **No. The import is atomic.** Any fatal file error fails the whole import and the previous active import stays untouched. Non-fatal issues are warnings. | Backend |
 | L4 | Fuzzy and prefix matches: show them? | **Show them in a separate, collapsed "Possible matches" group**, labelled as possible. Exact matches show as "Works at {Company}". | Frontend |
-| L5 | Is Connections.csv required at onboarding? | **No.** Onboarding needs a resume plus an import with at least one recognised file. Connections are optional (the consent copy explains why we ask). | Frontend, Backend |
+| L5 | Is Connections.csv required at onboarding? | **No.** Onboarding needs a parsed resume. The LinkedIn export is offered on the same step but can be skipped and added later from `/profile` (MASTER_PLAN D-08). Connections are optional (the consent copy explains why we ask). | Frontend, Backend |
 | L6 | Is a 50 MB upload cap enough? LinkedIn's "larger data archive" (messages, media) can exceed it. | **Yes, with guidance:** the upload screen tells users to request the **specific data** export (Connections, Positions, Profile, Skills, Education), which is small and arrives in ~10 minutes, or to upload the five CSVs individually. | Frontend (help copy) |
 
 ### 1.2 Risks
@@ -176,7 +176,7 @@ Browser                      Next.js /api/v1                    Storage (linkedi
   │                                                                │   e delete-raw      (Storage remove; raw_deleted_at)
 ```
 
-**Inngest configuration.** Trigger `linkedin/import.uploaded`. `concurrency: { key: 'event.data.applicantId', limit: 1 }`. `cancelOn: [{ event: 'linkedin/import.uploaded', if: 'async.data.applicantId == event.data.applicantId && async.data.importId != event.data.importId' }]` so a newer upload supersedes an older run (the older import is marked `failed` with `SUPERSEDED` in the cancellation handler). Retries: 3 for infrastructure errors. Validation and parse errors throw `NonRetriableError`.
+**Inngest configuration.** Trigger `linkedin/import.uploaded`. `concurrency: { key: 'event.data.applicantId', limit: 1 }`. `cancelOn: [{ event: 'linkedin/import.uploaded', if: 'async.data.applicantId == event.data.applicantId && async.data.importId != event.data.importId' }, { event: 'linkedin/import.deleted', match: 'data.applicantId' }]` so a newer upload supersedes an older run (the older import is marked `failed` with `SUPERSEDED` in the cancellation handler). Retries: 3 for infrastructure errors. Validation and parse errors throw `NonRetriableError`.
 
 **Step details**
 
@@ -198,14 +198,16 @@ declare v_applicant uuid; v_status public.evaluation_status;
 begin
   select applicant_id, status into v_applicant, v_status
     from public.linkedin_imports where id = p_import_id for update;
+  if not found then return; end if;                    -- deleted by the user mid-parse (MASTER_PLAN D-14)
   if v_status = 'succeeded' then return; end if;
   if v_status <> 'running' then
     raise exception 'import not running' using errcode = 'P0001', hint = 'CONFLICT';
   end if;
-  -- a newer import exists: this one lost the race
+  -- a newer import exists: this one lost the race. An init-only newer row (pending, never
+  -- completed) does not count, so an abandoned second tab cannot block a real upload (D-14).
   if exists (select 1 from public.linkedin_imports
              where applicant_id = v_applicant and created_at > (select created_at from public.linkedin_imports where id = p_import_id)
-               and status in ('pending','running','succeeded')) then
+               and (status in ('running','succeeded') or (status = 'pending' and uploaded_at is not null))) then
     raise exception 'superseded' using errcode = 'P0001', hint = 'CONFLICT';
   end if;
   update public.linkedin_imports
@@ -346,7 +348,7 @@ Because the function is `security invoker` and filters on `auth.uid()`, a recrui
 ## 3. Data model changes
 
 All DDL is in data.md. Ingestion-specific items:
-- `linkedin_imports` columns `counts`, `warnings`, `error`, `error_detail`, `headline`, `summary`, `industry`, `geo_location`, `raw_deleted_at`, `started_at`, `parsed_at` (data.md §3.6).
+- `linkedin_imports` columns `counts`, `warnings`, `error`, `error_detail`, `headline`, `summary`, `industry`, `geo_location`, `raw_deleted_at`, `uploaded_at` (D-14), `started_at`, `parsed_at` (data.md §3.6).
 - `connections` without email/URL; `company_name_normalized` generated (data.md §3.6).
 - NEW `company_aliases` and the domain-alias trigger (data.md §3.4).
 - Functions `activate_linkedin_import` (service role) and `connections_at_company` (authenticated), above.
@@ -384,7 +386,7 @@ Response `201`:
 Errors: `VALIDATION_FAILED` (422, `details.fields`), `FILE_TOO_LARGE` → mapped to `VALIDATION_FAILED` with `details.code`, `RATE_LIMITED` (429), `FORBIDDEN` (not an applicant).
 
 ### `POST /api/v1/linkedin-imports/{id}/complete`
-Checks the import is own and `pending`, lists Storage objects and compares names and sizes with init. Sends `linkedin/import.uploaded`. Response `202 { "importId": "uuid", "status": "pending" }`. Errors: `NOT_FOUND`, `CONFLICT` (not pending), `VALIDATION_FAILED` (`details.code = "UPLOAD_MISSING"`).
+Checks the import is own and `pending`, lists Storage objects and compares names and sizes with init, sets `uploaded_at = now()` (D-14), then sends `linkedin/import.uploaded`. Response `202 { "importId": "uuid", "status": "pending" }`. Errors: `NOT_FOUND`, `CONFLICT` (not pending), `VALIDATION_FAILED` (`details.code = "UPLOAD_MISSING"`).
 
 ### `GET /api/v1/linkedin-imports/{id}` (poll every 2 s until terminal)
 ```json
@@ -399,7 +401,7 @@ On failure: `"status": "failed", "error": { "code": "CSV_MISSING_REQUIRED_COLUMN
 Summary of the active import (same shape) or `404 NOT_FOUND` if none. Used by onboarding and Settings, and by the "will be removed" warning (L2).
 
 ### `DELETE /api/v1/linkedin-imports/active?scope=all|connections`
-`all`: deletes every import of the applicant (cascade) and raw files. `connections`: deletes `connections` rows of the active import only and sets `counts.connections.parsed = 0`. `204`. Logs `linkedin.import_deleted`.
+`all`: sends `linkedin/import.deleted` (in `parse-linkedin-import`'s `cancelOn`, D-14), then deletes every import of the applicant (cascade) and raw files; a run that is already past cancellation finds its row gone and `activate_linkedin_import` returns without effect. `connections`: deletes `connections` rows of the active import only and sets `counts.connections.parsed = 0`. `204`. Logs `linkedin.import_deleted`.
 
 ### `GET /api/v1/jobs/{jobId}/connections`
 Calls `rpc('connections_at_company', { p_company_id: job.company_id })` with the user client. Backend may embed the same payload in the Check-fit response (brief §3.1).
@@ -437,6 +439,8 @@ Errors: `NOT_FOUND` (job not visible), `FORBIDDEN` (not applicant). No active im
 - Upload init succeeded but the browser never uploaded → `ABANDONED` after 24 h, prefix purged.
 - `complete` called twice → second call returns `409 CONFLICT` (status no longer `pending`); the Inngest event is sent once (event id = `importId` for dedupe).
 - Two tabs upload at once → the later import wins; the earlier is `SUPERSEDED`; `activate` also refuses to activate an import older than another live one.
+- Tab B calls init and is abandoned; tab A (older) completes → A activates, because B has `uploaded_at` null (D-14). Integration test required.
+- User deletes LinkedIn data while a parse runs → `linkedin/import.deleted` cancels the run; if activation already started, it finds no row and returns (D-14).
 - ZIP containing both `Connections.csv` and `connections.csv` (case variants) → `DUPLICATE_FILE_KIND`.
 - Connections.csv with header only, or 0 data rows → succeeds with `parsed: 0` (a member with no connections is valid).
 - Connections.csv where every Company is empty (privacy settings) → succeeds; UI says "Your export has no company information for your connections."
@@ -503,3 +507,15 @@ Errors: `NOT_FOUND` (job not visible), `FORBIDDEN` (not applicant). No active im
 6. **Fit cache interplay:** confirmed. `fit_evaluations.linkedin_import_id` is part of my `input_hash` (ai-evaluation.md A2), so activation invalidates cached fits automatically. The deleted old import nulls the provenance FK only.
 
 ## Resolution
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| L1 localized headers | **Accepted.** The Lead recruits three or more testers with non-English exports in Phase 0 (MASTER_PLAN §11), and their exports become fixtures before Phase 1 exits. |
+| L2 replace-all, L3 atomic import, L4 possible matches shown separately, L6 50 MB cap with guidance | **Accepted.** |
+| L5 onboarding gate | **Changed by D-08.** Only a parsed resume is required to finish onboarding. The LinkedIn export is on the same step but can be skipped, and the UI keeps nudging (`ConnectionsCallout`, `/profile`). |
+| Backend 1–2: init-only imports blocking activation | **Fixed (D-14).** New column `linkedin_imports.uploaded_at`, set by `complete`. The supersede check counts newer imports only when they are `running` or `succeeded`, or `pending` with `uploaded_at` set. The sweeper uses `uploaded_at` to tell a completed upload from an init-only one. §2.7, §3, §4 and §5 have been updated. |
+| Backend 3: service-role inserts | **Confirmed.** No trigger on `connections` reads `auth.uid()`. The generated `company_name_normalized` cost at 35k rows is acceptable. Re-measure in Phase 1. |
+| Backend 4: delete during parse | **Fixed (D-14).** `DELETE …/active` sends `linkedin/import.deleted`, which is in `cancelOn`. `activate_linkedin_import` returns quietly when the row is gone. |
+| Backend 5–6 | **Accepted.** |

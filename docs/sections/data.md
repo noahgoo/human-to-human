@@ -19,7 +19,7 @@
 | D3 | Can recruiters see an applicant's parsed LinkedIn data (positions, skills, education)? | **No (MVP).** Recruiters see the resume, confidence and GitHub ratings only. LinkedIn tables are owner-only. Revisit with a consent toggle later. | Lead |
 | D4 | One recruiter, many companies? | **One non-rejected membership per recruiter** (partial unique index). Multiple recruiters per company is supported (locked). | Backend (company-verification) |
 | D5 | Hiding GitHub ratings from applicants vs. the GDPR right of access (Art. 15). AI-generated ratings about a person are personal data. | **The in-product UI and the self-service export hide ratings** (locked decision). A formal data-subject access request (DSAR) made to support is fulfilled in full, ratings included, through a service-role script. Counsel must confirm. | Lead (legal) |
-| D6 | Column-level encryption (pgsodium TCE / Vault) for PII columns? | **No column-level encryption in MVP.** Rely on Supabase disk encryption (AES-256), RLS, column grants and minimisation. Vault holds only secrets (Inngest event key for the pg_cron sweeper). Reasoning is in §7.3. | Lead |
+| D6 | Column-level encryption (pgsodium TCE / Vault) for PII columns? | **No column-level encryption in MVP.** Rely on Supabase disk encryption (AES-256), RLS, column grants and minimisation. No Vault secrets are needed: the stuck-work sweeper is an Inngest cron (MASTER_PLAN D-01). Reasoning is in §7.3. | Lead |
 | D7 | `audit_log` is not in the canonical table list. | **Add it (NEW).** Needed for resume access, status changes, verification decisions, exports and deletions. | Lead (Decision log) |
 | D8 | `company_aliases` is not in the canonical list. | **Add it (NEW).** Needed for connection matching (see linkedin-ingestion.md). | Lead (Decision log) |
 | D9 | Where do the parsed Profile.csv fields go? | **Columns on `linkedin_imports`**: `headline`, `summary`, `industry`, `geo_location`. Address, birth date, zip code, maiden name, Twitter and IM handles are dropped at parse time. | Backend (fit prompt reads them) |
@@ -38,7 +38,7 @@
 ### 1.3 Assumptions
 
 - Postgres 15+ (Supabase default), so `ON DELETE SET NULL (column_list)` is available.
-- Extensions: `pgcrypto`, `pg_trgm`, `unaccent` (all in schema `extensions`), `pg_cron`, `pg_net`, `supabase_vault`, `pgtap` (tests only).
+- Extensions: `pgcrypto`, `pg_trgm`, `unaccent` (all in schema `extensions`), `pg_cron` (SQL-only retention jobs), `pgtap` (tests only). `pg_net` and Vault are not used (MASTER_PLAN D-01).
 - Only `public` is exposed through PostgREST. Internal helpers live in schema `private`, which is not exposed. `authenticated` gets `USAGE` on `private` so RLS policies can call the helpers.
 - The UTC month is the token period (brief OQ1).
 - All timestamps are `timestamptz` and stored in UTC.
@@ -78,7 +78,6 @@ create extension if not exists pgcrypto  with schema extensions;
 create extension if not exists pg_trgm   with schema extensions;
 create extension if not exists unaccent  with schema extensions;
 create extension if not exists pg_cron;
-create extension if not exists pg_net    with schema extensions;
 
 create schema if not exists private;
 revoke all on schema private from public;
@@ -369,6 +368,7 @@ create table public.jobs (
   description   text not null check (char_length(description) between 1 and 20000),
   requirements  text not null check (char_length(requirements) between 1 and 10000),
   location      text check (char_length(location) <= 200),
+  work_mode     text check (work_mode in ('remote', 'hybrid', 'onsite')),   -- MASTER_PLAN D-21 (frontend F2)
   token_cost    smallint not null default 2 check (token_cost between 1 and 3),
   is_technical  boolean not null default false,
   status        public.job_status not null default 'draft',
@@ -444,6 +444,7 @@ create table public.linkedin_imports (
   industry        text check (char_length(industry) <= 200),
   geo_location    text check (char_length(geo_location) <= 200),
   raw_deleted_at  timestamptz,                          -- set when the raw files are removed from Storage
+  uploaded_at     timestamptz,                          -- set by POST …/complete; init-only rows stay null (MASTER_PLAN D-14)
   started_at      timestamptz,
   parsed_at       timestamptz,
   created_at      timestamptz not null default now(),
@@ -1113,13 +1114,14 @@ Full definition, sort keys and pagination RPC are in [applicant-ranking.md §Des
 | `withdraw_application(p_application_id)` | definer | Applicant. From `submitted`/`shortlisted` only. No refund. |
 | `get_applicant_contact(p_application_id) → text` | definer | D2. Returns `profiles.email` if the caller is a job member and the application is `shortlisted`; logs `contact.revealed`. |
 | `set_my_role(p_role user_role)` | definer | Sets role once (`applicant` or `recruiter`); creates `applicant_profiles` for applicants. |
-| `mark_onboarded()` | definer | Sets `onboarded_at` only if prerequisites hold: applicant has an `active_resume_id` with `parse_status='succeeded'` and an active LinkedIn import (`succeeded`); recruiter has a non-rejected membership. Returns the missing items otherwise. |
+| `mark_onboarded()` | definer | Sets `onboarded_at` only if prerequisites hold: applicant has an `active_resume_id` with `parse_status='succeeded'` (the LinkedIn import is optional, MASTER_PLAN D-08); recruiter has a non-rejected membership. Returns the missing items otherwise. |
 | `activate_linkedin_import(p_import_id)` | definer, **service role only** | Flips `active_linkedin_import_id` and deletes older imports in one transaction (linkedin-ingestion.md). |
 | `export_my_data() → jsonb` | definer | §7.5. |
+| `my_latest_fits(p_job_ids uuid[])` | STABLE, invoker | Frontend F5 (MASTER_PLAN D-23). Latest `succeeded` own fit per job: `job_id, id, confidence_score, band, resume_id, linkedin_import_id, job_updated_at, completed_at`. The app marks a row stale when those provenance ids or `job_updated_at` differ from the current ones. |
 | `private.log_audit(...)` | definer | §3.9. |
 | `is_company_admin(company_id)` | STABLE, definer | Company-admin check for company-verification RPCs. |
 | `private.my_repo_review_state(application_id)` / `private.fit_flags_for_member(fit_id)` | STABLE, definer | Narrow, owner/member-checked reads behind `my_applications` and `job_applicant_rankings`. |
-| `custom_access_token_hook(event jsonb) → jsonb` | STABLE, definer | backend.md B1. Adds `app_role` (`profiles.role`) and `onboarded` (`onboarded_at is not null`) to the JWT claims. `grant execute … to supabase_auth_admin; revoke … from authenticated, anon, public`; `grant select (id, role, onboarded_at) on profiles to supabase_auth_admin` plus policy `profiles_auth_admin_read for select to supabase_auth_admin using (true)`. Claims are UX hints for middleware only: **no RLS policy reads `app_role`**; claims go stale until `refreshSession()`. pgTAP asserts the output shape. |
+| `custom_access_token_hook(event jsonb) → jsonb` | STABLE, definer | backend.md B1. Adds `app_role` (`profiles.role`), `onboarded` (`onboarded_at is not null`) and, for recruiters, `membership_status` (their non-rejected membership's `verification_status`, else null) to the JWT claims (MASTER_PLAN D-24). `grant execute … to supabase_auth_admin; revoke … from authenticated, anon, public`; `grant select (id, role, onboarded_at) on profiles to supabase_auth_admin` plus policy `profiles_auth_admin_read for select to supabase_auth_admin using (true)`. Claims are UX hints for middleware only: **no RLS policy reads `app_role`**; claims go stale until `refreshSession()`. pgTAP asserts the output shape. |
 | `token_period(ts)`, `current_token_period()`, `token_monthly_grant()`, `ensure_monthly_grant(uid, period)`, `refund_application(id, reason)` (service role), `admin_adjust_tokens(uid, amount, reason)` (`is_admin()`) | per token-system.md | Backend spec; Data implements with `search_path = ''`. |
 | Company-verification RPCs (`create_company_claim`, `create_join_request`, `confirm_work_email[_via_auth]`, `approve_membership`, `remove_membership`, `set_company_admin`, `update_company_profile`, `admin_review_company`, `admin_add/remove_company_domain`) | definer | Backend spec (company-verification.md §3); Data implements and tests. |
 
@@ -1209,7 +1211,7 @@ Parsers must also never log row contents (pino redaction on `row`, `record`; Sen
 
 - **At rest:** Supabase encrypts databases, backups and Storage with AES-256. **In transit:** TLS everywhere (Supabase, Vercel, Inngest, OpenRouter).
 - **Column-level (pgsodium TCE / Vault): not used for PII in MVP.** Reasons: (1) the threat we care about is other users of the app, which RLS handles; column encryption does not protect against a compromised service role, since that role holds the key; (2) `connections.company_name` must be matched with `=` and trigram similarity, which encrypted columns cannot do; (3) Supabase has marked pgsodium's TCE as pending deprecation, so building on it adds migration risk.
-- **Vault is used** for secrets that SQL needs: the Inngest event key used by the pg_cron sweeper's `pg_net` call.
+- **Vault is not used** in MVP. Nothing in SQL calls out to Inngest; the stuck-work sweeper is an Inngest cron (MASTER_PLAN D-01).
 - **Revisit trigger:** if we start storing anything not needed for queries that is highly sensitive (e.g. government IDs, demographic data for bias audits), encrypt it application-side with a KMS key, not in Postgres.
 
 ### 7.4 Retention
@@ -1230,7 +1232,7 @@ Parsers must also never log row contents (pino redaction on `row`, `record`; Sen
 
 ### 7.5 Data subject rights
 
-**Delete my data (account deletion).** `DELETE /api/v1/me` (Backend route; Data specifies the sequence). The route re-authenticates (recent sign-in < 5 min), writes `audit_log('account.delete_requested')`, then sends Inngest `account/delete.requested`. The function runs:
+**Delete my data (account deletion).** Server action `deleteAccount` (Backend; Data specifies the sequence; MASTER_PLAN D-28). It requires a recent sign-in (< 5 min), writes `audit_log('account.delete_requested')`, then sends Inngest `account/deletion.requested`. The function runs:
 1. Recruiters only: if they are the last verified member of a company with open jobs, close those jobs (`status = 'closed'`).
 2. Delete all Storage objects under `resumes/{uid}/` and `linkedin-exports/{uid}/` (Storage API, paged).
 3. `supabase.auth.admin.deleteUser(uid)`. This cascades `auth.users → profiles → everything` per §3.10.
@@ -1240,7 +1242,7 @@ Target: completed within minutes; SLA promised to users is 30 days (GDPR Art. 12
 
 **Partial deletion** (also self-service): delete LinkedIn data (deletes all `linkedin_imports` → cascade + raw files), delete connections only (deletes `connections` rows of the active import; keeps positions), delete a resume (never blocked; any application's `resume_id` goes null).
 
-**Data export.** `GET /api/v1/me/export` → `export_my_data()` returns one JSON document: profile, applicant profile, LinkedIn data including connections (it is the applicant's own upload), resumes metadata + text (and 10-minute signed URLs for the files), fit evaluations, `my_applications`, token ledger. **It excludes `repo_evaluations` and `application_events.note`** (locked decision; see D5 for formal DSARs). Rate-limited to 1/hour; logs `account.export`.
+**Data export.** Server action `exportMyData` → `export_my_data()` returns one JSON document (served as a 5-minute signed download): profile, applicant profile, LinkedIn data including connections (it is the applicant's own upload), resumes metadata + text (and 10-minute signed URLs for the files), fit evaluations, `my_applications`, token ledger. **It excludes `repo_evaluations` and `application_events.note`** (locked decision; see D5 for formal DSARs). Rate-limited to 3/day; logs `account.export`.
 
 **Audit logging** covers: resume signed URLs issued (who, which application), status changes, contact reveal, verification decisions, exports, deletions, token adjustments, re-runs. `metadata` holds ids and codes only.
 
@@ -1284,14 +1286,14 @@ Data owns no route handlers. The PostgREST/RPC surface below is what Backend and
 | Surface | Method / path | Auth | Request → response | Errors |
 |---|---|---|---|---|
 | RPC | `rpc('set_my_role', {p_role})` | authenticated, role null | → `{role}` | `FORBIDDEN` (already set / admin) |
-| RPC | `rpc('mark_onboarded')` | authenticated | → `{onboarded_at}` or `{missing: ['resume','linkedin']}` | `VALIDATION_FAILED` |
+| RPC | `rpc('mark_onboarded')` | authenticated | → `{onboarded_at}` or `{missing: ['resume']}` | `VALIDATION_FAILED` |
 | RPC | `rpc('set_application_status', {p_application_id, p_to_status, p_note})` | verified member | → application row | `FORBIDDEN`, `NOT_FOUND`, `CONFLICT` (bad transition) |
 | RPC | `rpc('withdraw_application', {p_application_id})` | applicant owner | → `{status:'withdrawn'}` | `NOT_FOUND`, `CONFLICT` |
-| RPC | `rpc('get_applicant_contact', {p_application_id})` | verified member | → `{email}` | `FORBIDDEN` (not shortlisted) |
+| RPC | `rpc('get_applicant_contact', {p_application_id})` | verified member | → `{email}` | `NOT_FOUND` (not a member or unknown id), `CONFLICT {reason:'not_shortlisted'}` (MASTER_PLAN D-15) |
 | RPC | `rpc('connections_at_company', {p_company_id})` | applicant | → rows | — (empty set) |
 | RPC | `rpc('job_applicant_rankings_page', …)` | verified member | see applicant-ranking.md | `FORBIDDEN` via empty set |
-| HTTP (proposal) | `GET /api/v1/me/export` | applicant/recruiter, rate 1/h | → `200 application/json` attachment | `RATE_LIMITED` |
-| HTTP (proposal) | `DELETE /api/v1/me` | re-auth < 5 min | → `202 {status:'scheduled'}` | `UNAUTHENTICATED`, `FORBIDDEN` (stale auth) |
+| Server action (D-28) | `exportMyData` | any signed-in user, 3/day | → `{url, expiresAt}` (5-min signed JSON download) | `RATE_LIMITED` |
+| Server action (D-28) | `deleteAccount` | re-auth < 5 min | → `{}` and sign-out; emits `account/deletion.requested` | `FORBIDDEN {reason:'reauth_required'}`, `CONFLICT` (`last_company_admin`) |
 | HTTP (proposal) | `DELETE /api/v1/linkedin-imports/active` / `?scope=connections` | applicant | → `204` | `NOT_FOUND` |
 
 RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTER_PLAN §5.
@@ -1301,7 +1303,7 @@ RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTE
 ## 9. Migration and seed strategy
 
 - **Tooling:** Supabase CLI. `supabase migration new <name>` → `supabase/migrations/<timestamp>_<name>.sql`. Local: `supabase start`, `supabase db reset` (applies all migrations + `seed.sql`). CI: `supabase db reset && supabase test db` on every PR, then `supabase gen types typescript --local > lib/supabase/database.types.ts` and fail if the diff is dirty.
-- **Order:** `0001_foundation`, `0002_normalize`, `0003_identity`, `0004_companies` (+jobs), `0005_linkedin`, `0006_resumes`, `0007_applications`, `0008_ledger_audit`, `0009_rls_helpers`, `0010_rls_policies`, `0011_views_functions` (incl. `apply_to_job`), `0012_storage`, `0013_cron` (pg_cron jobs, Vault secret reference).
+- **Order:** `0001_foundation`, `0002_normalize`, `0003_identity`, `0004_companies` (+jobs), `0005_linkedin`, `0006_resumes`, `0007_applications`, `0008_ledger_audit`, `0009_rls_helpers`, `0010_rls_policies`, `0011_views_functions` (incl. `apply_to_job`), `0012_storage`, `0013_cron` (pg_cron jobs for SQL-only retention).
 - **Rules:** migrations are forward-only and never edited after merge; every new table ships with `enable row level security` + policies + pgTAP in the same PR; destructive changes go in two steps (expand, then contract in a later release); `supabase db lint` and Supabase Advisors (security + performance) must be clean.
 - **Deploy:** GitHub Action on `main` runs `supabase db push` against staging, then production after approval. Remote branches (Supabase Branching) for preview deployments if budget allows.
 - **Seed (`supabase/seed.sql`, local/dev only, never run in prod).** Deterministic UUIDs (`00000000-0000-0000-0000-0000000000xx`) and password `password123` for every user, inserted into `auth.users` + `auth.identities`. Fictional names only:
@@ -1377,3 +1379,20 @@ Applied after reviewing ai-evaluation.md, token-system.md and company-verificati
 ## Review notes
 
 ## Resolution
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| D1 resume snapshot, D2 email after shortlist, D3 no LinkedIn data for recruiters, D4 one membership per recruiter | **Accepted** (D-29, D-30). |
+| D5 hidden ratings vs. GDPR access | **Accepted as the default, pending counsel (D-17).** The product UI and self-service export hide ratings. A formal DSAR is fulfilled in full through an audited support script. This is a launch-gate item. |
+| D6 no column encryption | **Accepted.** Vault and `pg_net` are dropped, because the sweeper is an Inngest cron (D-01). §1.3, §3.1 and §7.3 have been updated. |
+| D7 `audit_log`, D8 `company_aliases` | **Accepted (D-20)**, together with `work_email_verifications` and `blocked_email_domains`. |
+| D9 Profile.csv columns, D10 bucket `linkedin-exports` | **Accepted.** |
+| `mark_onboarded()` | **Resume only (D-08).** §5.3 and §8 have been updated. |
+| `jobs.work_mode` | **Added (D-21).** |
+| `my_latest_fits(p_job_ids)` | **Added (D-23)** for job cards. |
+| `linkedin_imports.uploaded_at` | **Added (D-14).** |
+| `get_applicant_contact` errors | `NOT_FOUND` / `CONFLICT not_shortlisted` (D-15). §8 has been updated. |
+| Account deletion and export | Server actions (D-28). §7.5 and §8 have been updated. |
+| pgTAP addition | `08_ranking`: recruiter sees a non-null `applicant_name` and `confidence_score` (D-15). |

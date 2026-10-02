@@ -14,7 +14,7 @@
 | # | Brief says | This plan decides | Why |
 |---|---|---|---|
 | R1 | §3.3: GitHub component = `avg(4 ratings) × 10` | **`(avg − 1) / 9 × 100`** | The rating scale starts at 1, not 0. With `avg × 10` the worst possible repo (all 1s) still scores 10/100, which gives it 3 free rank points, and the GitHub component only spans 27 points (10→100 × 0.3) instead of 30. Min-max scaling maps the real range 1–10 onto 0–100, the same range as confidence, so "30%" is exactly 30% of the spread. Worked example in §2.2. |
-| R2 | OQ2: when the repo review **failed**, rank on confidence only | **Failed and pending reviews both go into an "Incomplete" tier below every complete applicant**, ordered by confidence inside the tier and badged. | Ranking a failed or pending applicant on confidence alone puts them **above** an equally confident applicant whose repo was reviewed and scored below 100, i.e. a missing review is rewarded. It is also gameable (make the repo private right after Apply). The tier keeps them visible and ordered, without letting missing data outrank real data. Inngest retries plus the pg_cron sweeper keep the pending tier short (minutes). |
+| R2 | OQ2: when the repo review **failed**, rank on confidence only | **Failed and pending reviews both go into an "Incomplete" tier below every complete applicant**, ordered by confidence inside the tier and badged. | Ranking a failed or pending applicant on confidence alone puts them **above** an equally confident applicant whose repo was reviewed and scored below 100, i.e. a missing review is rewarded. It is also gameable (make the repo private right after Apply). The tier keeps them visible and ordered, without letting missing data outrank real data. Inngest retries plus the Inngest `sweep-stuck-work` cron keep the pending tier short (minutes). |
 | R3 | §3.3: order by `rank_score DESC, submitted_at ASC` | **`rank_tier ASC, rank_score DESC, confidence DESC, security DESC, submitted_at ASC, application_id ASC`** | The task's tie-break chain; makes the order total and deterministic. |
 
 ### 1.2 Other open questions (defaults in bold)
@@ -24,7 +24,7 @@
 | R4 | Should recruiters be able to re-run a fit evaluation (e.g. after editing the job)? | **No in MVP.** The snapshot at Apply time is final. The list shows a notice when applicants for one job were scored under different `prompt_version`s. |
 | R5 | Show band labels ("Strong match") or only numbers? | **Both**, with neutral wording (§2.6). |
 | R6 | Show a rank position ("#3 of 41")? | **Yes**, computed over all non-withdrawn applicants of the job in the default order, independent of filters. |
-| R7 | Pagination response key: the brief shows `next_cursor` but also says camelCase at the API boundary. | **`next_cursor`** as literally specified in MASTER_PLAN §5 (Lead to settle globally). |
+| R7 | Pagination response key: the brief shows `next_cursor` but also says camelCase at the API boundary. | **`nextCursor`**: Lead settled it globally (MASTER_PLAN Decision log D-12, camelCase for every JSON key). |
 
 ### 1.3 Risks
 
@@ -246,7 +246,7 @@ begin
               (k->>4)::timestamptz, (k->>5)::uuid))
       order by r.rank_tier, r.sort_score desc, r.confidence_sort desc, r.security_sort desc,
                r.submitted_at, r.application_id
-      limit p_limit + 1;                  -- one extra row tells the API whether next_cursor exists
+      limit p_limit + 1;                  -- one extra row tells the API whether nextCursor exists
   elsif p_sort = 'confidence' then
     -- same shape with the 'confidence' tuple from the table above
     …
@@ -360,10 +360,10 @@ Response `200`:
 ```json
 {
   "data": [ { "applicationId": "…", "rank": { "position": 1, "tier": "complete", "score": 86.33, "band": "strong", "isProvisional": false, "provisionalScore": null }, "…": "…" } ],
-  "next_cursor": "eyJzIjoicmFuayIsImsiOlsuLi5dfQ" ,
+  "nextCursor": "eyJzIjoicmFuayIsImsiOlsuLi5dfQ" ,
   "rankingVersion": "2026-10-02T09:14:03.120Z",
   "rankingChanged": false,
-  "counts": { "submitted": 31, "shortlisted": 4, "rejected": 6, "withdrawn": 1, "incomplete": 2 },
+  "counts": { "submitted": 31, "shortlisted": 4, "rejected": 6, "withdrawn": 1, "incomplete": 2, "unscored": 1 },
   "job": { "id": "…", "isTechnical": true, "mixedPromptVersions": false }
 }
 ```
@@ -380,7 +380,7 @@ RSC pages read the first page by calling the same RPC through the user-scoped Su
 
 ## 5. Edge cases
 
-- **Job has no applicants** → `data: []`, `next_cursor: null`, counts all 0.
+- **Job has no applicants** → `data: []`, `nextCursor: null`, counts all 0.
 - **Snapshot fit not yet linked** (seconds after Apply) → tier 2 "Fit score pending"; moves up when linked.
 - **Fit snapshot failed** → tier 2 "Fit score unavailable"; Backend's sweeper/admin re-run fixes it.
 - **Review succeeded with extreme scores** (all 1s) → GitHub contributes 0 points; the applicant still ranks by 70% of confidence.
@@ -510,3 +510,21 @@ _Reviewer: Frontend. Context: [`docs/sections/frontend.md`](../sections/frontend
 5. **Rate limit:** `GET /api/v1/jobs/{jobId}/applicants` uses the `recruiter.read` policy, 120/min per user (backend.md §2.6).
 
 ## Resolution
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| R1 scaling `(avg − 1) / 9 × 100` | **Accepted (D-05).** It replaces the brief's `avg × 10`. |
+| R2 "Incomplete" tier | **Accepted (D-06).** Pending, running and failed reviews rank in tier 1, below every complete applicant. Missing fit scores rank in tier 2. This supersedes the pass-1 brief's "rank on confidence only". |
+| R3 tie-break chain, R4 no re-score, R5 bands, R6 rank position | **Accepted.** `rank_position` counts **every non-withdrawn applicant, rejected included**, and the UI labels it "of N applicants". It stays the global position under filters. |
+| R7 pagination key | **`nextCursor` (D-12).** Every JSON key at the API boundary is camelCase, including `nextCursor` and `error.requestId`. |
+| Frontend 1: detail read and shared loader | **Accepted (D-15, D-26).** `GET /api/v1/jobs/{jobId}/applicants/{applicationId}` returns `RankedApplicant` plus `resume {available, fileName, mimeType, sizeBytes, textContent}`, `events [{toStatus, at, actorName}]`, fit `requirements`/`subScores` and repo `signals`. Backend owns `lib/ranking/loadApplicantsPage()` and `loadApplicantDetail()`, which serve both the RSC and the route, so page 1 also returns `nextCursor`, `rankingVersion`, `counts` and `job`. |
+| Frontend 1: `counts` | **Accepted.** Add `unscored` (tier 2) next to `incomplete`. The status counts (`submitted`, `shortlisted`, `rejected`, `withdrawn`) ignore the status filter. `incomplete` and `unscored` are counted over Active (`submitted`, `shortlisted`) only. |
+| Frontend 2: failure copy | **Accepted (D-07).** Recruiters see the precise `failure_code`. System codes read "We're retrying the review". `integrity` reads "Review unavailable" and never mentions injection. |
+| Frontend 4 / Backend: `get_applicant_contact` errors | **`CONFLICT {reason:'not_shortlisted'}`** when the application is not shortlisted. **`NOT_FOUND`** for a non-member or an unknown id, so foreign rows stay invisible. The guard returns FORBIDDEN for unverified recruiters (D-15). data.md §8 has been updated. |
+| Frontend 5: text-first resume viewer | **Accepted (D-13).** Downloads only, with `Content-Disposition: attachment` and 60-second URLs. Inline PDF preview is Later, once AV scanning exists. |
+| Frontend 6–7: tier tooltip, status emails | **Accepted** as Backend answered. Reconsidering a rejection sends the shortlisted email, and `shortlisted → submitted` sends nothing. |
+| Backend 1: `github.flags` in the list | **Accepted.** The flags are already in the §2.8 contract. The list shows a badge only, and the evidence stays in the detail read. |
+| Backend 2: RLS for names and fit scores through the view | **Confirmed.** data.md §4.3 has `profiles_select_applicants`, the `applicant_profiles` member select, and `fit_select_recruiter`. Add a pgTAP assertion to `08_ranking.test.sql`: as an Acme recruiter, `applicant_name is not null` and `confidence_score is not null` for A1. |
+| Backend 4: sweeper | **Inngest cron `sweep-stuck-work` (D-01).** The R2 row in §1.1 has been updated. |

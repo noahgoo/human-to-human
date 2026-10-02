@@ -21,7 +21,7 @@
 | B8 | GitHub fetch format | **Zipball** (`downloadZipballArchive`) so we reuse `fflate`. MASTER_PLAN §2 says tarball, which would add a tar parser. **Minor deviation; Lead to confirm.** |
 
 ### Risks
-- **Service-role misuse.** The service-role client bypasses RLS. It is importable only from `lib/supabase/admin.ts` (`import 'server-only'`). An ESLint `no-restricted-imports` rule allows it only from `inngest/**` and `app/admin/**`, plus `lib/supabase/admin.ts` itself, and CI fails otherwise.
+- **Service-role misuse.** The service-role client bypasses RLS. It is importable only from `lib/supabase/admin.ts` (`import 'server-only'`). An ESLint `no-restricted-imports` rule allows it only from `inngest/**` and `scripts/support/**` (audited DSAR/support scripts), plus `lib/supabase/admin.ts` itself, and CI fails otherwise. Admin pages use the user-scoped client with `is_admin()` (aal2) RLS (MASTER_PLAN D-18).
 - **Long work on Vercel.** Every LLM, GitHub, parse or email call runs in Inngest steps, never in a request. Route handlers stay under 2 s p95, except the sync GitHub check (5 s timeout).
 - **Lost events after commit** (the DB commit succeeds and `inngest.send` fails). Covered by the `sweep-stuck-work` cron and idempotent functions.
 - **Rate-limit store outage** (Upstash). The LLM-triggering endpoint fails closed. Everything else fails open and logs.
@@ -50,7 +50,7 @@
 
 **Sign-up and role selection flow:**
 ```
-/auth (sign-up tab, role selector: Applicant | Recruiter)
+/sign-up (role selector: Applicant | Recruiter)
   ├─ email/password → server action signUp({email,password,role}) → supabase.auth.signUp({options:{data:{role}, emailRedirectTo:/auth/callback}})
   │     trigger handle_new_user (Data): insert profiles(id, email, full_name, role = whitelisted meta role)
   └─ OAuth → server action startOAuth({provider, role?}) → set cookie np_role_intent → redirect to provider
@@ -66,18 +66,18 @@
 **Onboarding gate** (`lib/auth/gate.ts`, used by middleware and the callback):
 | Claims | Redirect target |
 |---|---|
-| no session, protected route | `/auth?next=…` |
+| no session, protected route | `/sign-in?next=…` |
 | `app_role = null` | `/onboarding/role` |
 | `applicant`, `onboarded = false` | `/onboarding/applicant` |
 | `recruiter`, `onboarded = false` | `/onboarding/recruiter` |
 | `admin` | `/admin/companies` (admins skip onboarding) |
-| onboarded user hits `/onboarding/*` | role home (`/jobs` or `/recruiter`) |
+| onboarded user hits `/onboarding/*` | role home (`/jobs`, `/recruiter/jobs` or `/admin/companies`) |
 | user hits other role's area (`/recruiter/*` as applicant) | role home; the guard returns `FORBIDDEN` for APIs |
 
 Route paths are owned by Frontend (frontend.md). This table defines behaviour only.
 
 **`onboarded_at` set when:**
-- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'` **and** the active LinkedIn import has `status = 'succeeded'` (at least one recognised file, per linkedin-ingestion.md L5). Connections are optional. The action calls Data's `mark_onboarded()`, which re-checks these prerequisites in SQL.
+- **Applicant:** server action `completeApplicantOnboarding()` succeeds only if the active resume has `parse_status = 'succeeded'`. The LinkedIn export is part of the onboarding screen but can be skipped (MASTER_PLAN D-08); an upload that is still parsing does not block Finish. The action calls Data's `mark_onboarded()`, which re-checks these prerequisites in SQL.
 - **Recruiter:** `completeRecruiterOnboarding()` succeeds when the recruiter has a `pending` or `verified` membership. Verification is **not** required to finish onboarding, so unverified recruiters can draft jobs (company-verification.md §2.4).
 
 **Guards** (`lib/auth/`, canonical names): `getSession()`, `requireUser()`, `requireRole(role)`, `requireOnboarded()`, `requireCompanyMember(companyId, {verified: true})`, plus **`requireAdmin()`** (role `admin` + `aal2`). Each throws an `AppError`, which route handlers and the server-action wrapper convert to the standard error shape.
@@ -99,7 +99,7 @@ route handler         → withApi(handler, {auth, role, rateLimit, idempotent?})
                           4. Upstash rate limit
                           5. zod parse (body/query/params) → VALIDATION_FAILED {fields}
                           6. handler(ctx)   — user-scoped Supabase client (RLS)
-                          7. map errors → { error: {code, message, details, request_id} }
+                          7. map errors → { error: {code, message, details, requestId} }
 server action         → action(schema, fn) wrapper returning ActionResult<T>; same steps 1,3,4,5,7
 ```
 - `lib/errors/`: `AppError(code, message, details)`, `mapPostgrestError(e)` (reads `HINT` for `P0001`; maps `23505` → `CONFLICT`, `42501`/RLS → `FORBIDDEN` or `NOT_FOUND`, PGRST116 → `NOT_FOUND`), and `toResponse(err)`. Unknown errors → `INTERNAL`, reported to Sentry, message hidden.
@@ -233,7 +233,7 @@ Rules:
   - `beforeSend` strips request bodies, cookies and the query string `token`.
   - User context is `{id}` only.
   - Release = git SHA.
-- **Request IDs:** middleware sets `x-request-id`. It is echoed in responses and in `error.request_id`, passed into Inngest event data as `requestId`, and stored on `ai_usage.request_id`.
+- **Request IDs:** middleware sets `x-request-id`. It is echoed in responses and in `error.requestId`, passed into Inngest event data as `requestId`, and stored on `ai_usage.request_id`.
 - **Health:** `GET /api/health` (no auth) returns `{ok, db: 'ok'|'fail', version}` using a cheap `select 1` RPC. It is checked by an uptime monitor (Better Stack or Vercel monitoring).
 - **Alerts** (Sentry alert rules / Inngest):
   - 5xx rate > 2% over 10 min;
@@ -295,14 +295,14 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 ### 4.1 Auth and account
 | Kind | Method / name | Path | Auth | Request → Response | Errors |
 |---|---|---|---|---|---|
-| route | GET | `/auth/callback` | anon | `?code&next` → 302 to `next` or the gate target | redirects to `/auth?error=…` |
+| route | GET | `/auth/callback` | anon | `?code&next` → 302 to `next` or the gate target | redirects to `/sign-in?error=…` |
 | SA | `signUp` | — | anon | `{email, password, role}` → `{needsEmailConfirm: true}` | VALIDATION_FAILED, CONFLICT (`email_taken`), RATE_LIMITED |
 | SA | `signIn` | — | anon | `{email, password}` → `{redirectTo}` | UNAUTHENTICATED (`invalid_credentials`), RATE_LIMITED |
 | SA | `startOAuth` | — | anon | `{provider: 'google'\|'linkedin_oidc', role?, next?}` → `{url}` | VALIDATION_FAILED |
 | SA | `signOut` | — | user | → `{}` | — |
 | SA | `requestPasswordReset` / `updatePassword` | — | anon / user | `{email}` / `{password}` → `{}` | RATE_LIMITED, VALIDATION_FAILED |
 | SA | `setRole` | — | user (role null) | `{role}` → `{redirectTo}` (refreshes session) | CONFLICT (`role_already_set`), VALIDATION_FAILED |
-| SA | `deleteAccount` | — | user | `{confirm: 'DELETE'}` → `{}` (signs out) | CONFLICT (`last_company_admin`) |
+| SA | `deleteAccount` | — | user, signed in < 5 min ago | `{confirm: 'DELETE'}` → `{}` (signs out) | FORBIDDEN (`reauth_required`), CONFLICT (`last_company_admin`) |
 | SA | `exportMyData` | — | user | `{}` → `{url, expiresAt}`: calls Data's `export_my_data()` and returns the JSON as a 5-min signed download (rate limit 3/day) | RATE_LIMITED |
 | RA | GET | `/api/v1/me` | user | → `{id, email (from the auth session, since `profiles.email` is not column-granted), fullName, avatarUrl, role, onboarded, company?: {id, name, verificationStatus, membershipStatus, isCompanyAdmin}}` | 401 |
 | RA | GET | `/api/health` | anon | → `{ok, db, version}` | 503 |
@@ -320,21 +320,21 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | GET | `/api/v1/linkedin-imports/active` | applicant | → active import summary (same shape as GET by id) | 404 |
 | RA | DELETE | `/api/v1/linkedin-imports/active?scope=all\|connections` | applicant | → `204` (`all`: every import + raw files; `connections`: connections rows only). Logs `linkedin.import_deleted` | 422 |
 | SA | `saveApplicantPreferences` | — | applicant | `{headline?, targetSeniority?, locationPref?}` → profile | VALIDATION_FAILED |
-| SA | `completeApplicantOnboarding` | — | applicant | `{}` → `{redirectTo:'/jobs'}` (calls Data's `mark_onboarded()`, then refreshes the session) | CONFLICT (`resume_not_ready`, `linkedin_not_ready`) |
+| SA | `completeApplicantOnboarding` | — | applicant | `{}` → `{redirectTo:'/jobs'}` (calls Data's `mark_onboarded()`, then refreshes the session) | CONFLICT (`resume_not_ready`) |
 
 ### 4.3 Jobs (applicant side), fit, connections, tokens, applications
 | Kind | Method / name | Path | Auth | Request → Response | Errors |
 |---|---|---|---|---|---|
-| RA | GET | `/api/v1/jobs?limit&cursor&q&technical&maxCost` | applicant onb | → `{data:[{id, title, company:{id,name,logoUrl}, tokenCost, isTechnical, publishedAt, myApplicationStatus?, latestFit?:{score, band}}], next_cursor}` (open jobs of verified companies; RSC reads the same query directly) | 401, 403, 422 |
+| RA | GET | `/api/v1/jobs?limit&cursor&q&technical&maxCost` | applicant onb | → `{data:[{id, title, company:{id,name,logoUrl}, tokenCost, isTechnical, publishedAt, myApplicationStatus?, latestFit?:{score, band}}], nextCursor}` (open jobs of verified companies; RSC reads the same query directly) | 401, 403, 422 |
 | RA | GET | `/api/v1/jobs/{jobId}` | applicant onb | → job detail (description, requirements, tokenCost, isTechnical) | 404 |
 | RA | POST | `/api/v1/jobs/{jobId}/fit-evaluations` | applicant onb | ai-evaluation §7 | ai-evaluation §7 |
 | RA | GET | `/api/v1/fit-evaluations/{id}` | applicant (owner) | ai-evaluation §7 | 404 |
 | RA | GET | `/api/v1/jobs/{jobId}/connections` | applicant onb | → `200 {data:[{id, firstName, lastName, position, companyName, connectedOn, matchKind}], exactCount, possibleCount, asOf}` (contract owned by linkedin-ingestion.md §4; Data's `connections_at_company(job.company_id)`, user-scoped client) | 404 |
 | RA | POST | `/api/v1/repos/validate` | applicant | `{url}` → `{canonicalUrl, fullName, defaultBranch, sizeKb, language}` | 422 `REPO_NOT_ACCESSIBLE`, 429 |
-| RA | GET | `/api/v1/tokens/balance` | applicant | → `{period, granted, spent, refunded, adjusted, balance, resetsAt}` | 401, 403 |
+| RA | GET | `/api/v1/tokens/balance` | applicant | → `{period, granted, spent, refunded, adjusted, total, balance, resetsAt}` | 401, 403 |
 | RA | GET | `/api/v1/tokens/ledger?limit&cursor` | applicant | token-system §4 | 422 |
-| RA | POST | `/api/v1/applications` | applicant onb, **`Idempotency-Key` required** | `{jobId, githubRepoUrl?, expectedTokenCost?}` → `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 400, 401, 402 `INSUFFICIENT_TOKENS`, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 422 `VALIDATION_FAILED`/`REPO_NOT_ACCESSIBLE`, 429 |
-| RA | GET | `/api/v1/applications?limit&cursor&status` | applicant | from `my_applications` → `{data:[{id, job:{id,title,company,status}, status, tokenCost, submittedAt, updatedAt, repoReviewStatus?, refunded}], next_cursor}` | 401, 403 |
+| RA | POST | `/api/v1/applications` | applicant onb, **`Idempotency-Key` required** | `{jobId, githubRepoUrl?, repoOwnershipAttested?, expectedTokenCost?}` (attestation required for technical jobs, D-16) → `201 {applicationId, jobId, status, tokenCost, balanceAfter, period, replayed}` | 401, 402 `INSUFFICIENT_TOKENS`, 403, 404, 409 `JOB_NOT_OPEN`/`ALREADY_APPLIED`/`IDEMPOTENCY_KEY_REUSED`/`CONFLICT`, 422 `VALIDATION_FAILED`/`REPO_NOT_ACCESSIBLE`, 429 |
+| RA | GET | `/api/v1/applications?limit&cursor&status` | applicant | from `my_applications` → `{data:[{id, job:{id,title,company,status}, status, tokenCost, submittedAt, updatedAt, repoReviewStatus?, refunded}], nextCursor}` | 401, 403 |
 | RA | GET | `/api/v1/applications/{id}` | applicant (owner) | from `my_applications` + events → `{…, events:[{toStatus, at}]}`. **Never scores or ratings.** | 404 |
 | SA | `withdrawApplication` | — | applicant (owner) | `{applicationId}` → application (no refund; calls `withdraw_application` RPC) | CONFLICT (`not_withdrawable` unless `submitted`/`shortlisted`) |
 
@@ -344,17 +344,17 @@ Conventions follow MASTER_PLAN §5: the error shape, cursor pagination, camelCas
 | RA | GET | `/api/v1/companies?query` | recruiter | company-verification §4 | |
 | SA | `checkWorkEmailDomain`, `startCompanyClaim`, `requestCompanyJoin`, `resendWorkEmailVerification`, `confirmWorkEmail`, `cancelPendingMembership`, `updateCompanyProfile`, `approveMember`, `removeMember`, `setCompanyAdmin` | — | recruiter / cadmin | company-verification §4 | |
 | RA | POST | `/api/v1/companies/{companyId}/logo/uploads` | cadmin or pending creator | `{name, size, mimeType}` → signed upload | 403, 422 |
-| SA | `completeRecruiterOnboarding` | — | recruiter | → `{redirectTo:'/recruiter'}` | CONFLICT (`no_membership`) |
+| SA | `completeRecruiterOnboarding` | — | recruiter | → `{redirectTo:'/recruiter/jobs' (verified) or '/recruiter/pending'}` | CONFLICT (`no_membership`) |
 | SA | `createJob` | — | recruiter with an active membership (pending ok) | `{title, description, requirements, tokenCost 1–3, isTechnical}` → job (`draft`) | VALIDATION_FAILED (title 5–120, description 50–20,000, requirements 0–10,000 chars) |
 | SA | `updateJob` | — | member, or the pending creator for drafts | partial job → job | CONFLICT (`pricing_locked`), FORBIDDEN |
 | SA | `publishJob` | — | member (company **verified**) | `{jobId}` → job (`open`, `published_at`) | FORBIDDEN (`company_not_verified`), CONFLICT (bad transition) |
 | SA | `closeJob` / `reopenJob` | — | member | `{jobId}` → job | CONFLICT |
 | SA | `archiveJob` | — | member | `{jobId}` → `{job, refundsQueued}` → emits `job/archived` | CONFLICT |
 | SA | `deleteDraftJob` | — | member / creator | `{jobId}` → `{}` | CONFLICT (`has_applications` / not draft) |
-| RA | GET | `/api/v1/jobs/{jobId}/applicants?limit&cursor&sort&status&minConfidence&github&includeIncomplete&rankingVersion` | member | `rpc job_applicant_rankings_page` → `{data: RankedApplicant[], next_cursor, rankingVersion, rankingChanged, counts, job}` (**contract owned by applicant-ranking.md §2.8, §4**) | 401, 403, 404, 422, 429 |
-| RA | GET | `/api/v1/recruiter/applications/{applicationId}` | member | ai-evaluation §7 | 403, 404 |
+| RA | GET | `/api/v1/jobs/{jobId}/applicants?limit&cursor&sort&status&minConfidence&github&includeIncomplete&rankingVersion` | member | `rpc job_applicant_rankings_page` → `{data: RankedApplicant[], nextCursor, rankingVersion, rankingChanged, counts, job}` (**contract owned by applicant-ranking.md §2.8, §4**) | 401, 403, 404, 422, 429 |
+| RA | GET | `/api/v1/jobs/{jobId}/applicants/{applicationId}` | member | `RankedApplicant` + detail fields (D-15, D-26): `resume {available, fileName, mimeType, sizeBytes, textContent}`, `events [{toStatus, at, actorName}]`, fit `requirements`/`subScores`, repo `signals` | 403, 404 |
 | SA | `getResumeUrl` | — | member | `{applicationId}` → `{url, expiresAt}` (60 s, `download` disposition, the resume snapshotted on `applications.resume_id`; logs `resume.signed_url`) | FORBIDDEN, NOT_FOUND |
-| SA | `revealContact` | — | member | `{applicationId}` → `{email}` via `rpc get_applicant_contact` (shortlisted only; `profiles.email` is not column-granted; logs `contact.revealed`) | FORBIDDEN (not a member), CONFLICT (`not_shortlisted`), NOT_FOUND |
+| SA | `revealContact` | — | member | `{applicationId}` → `{email}` via `rpc get_applicant_contact` (shortlisted only; `profiles.email` is not column-granted; logs `contact.revealed`) | NOT_FOUND (unknown or another company's application), CONFLICT (`not_shortlisted`); guard-level FORBIDDEN for unverified recruiters (D-15) |
 | SA | `setApplicationStatus` | — | member | `{applicationId, toStatus: 'shortlisted'\|'rejected'\|'submitted', note?}` → application. Calls Data's `set_application_status` RPC (which writes `application_events` + `audit_log`), then emits `application/status.changed` | FORBIDDEN, CONFLICT (invalid transition; `withdrawn` is terminal) |
 
 Recruiter dashboard reads (job list, counts) are RSC-only, through the user-scoped client.
@@ -413,4 +413,22 @@ Test data: `supabase/seed.sql` holds 4 personas, 2 companies (1 verified, 1 pend
 <!-- Frontend, Data, Lead: add comments here -->
 
 ## Resolution
-<!-- Lead -->
+
+_Lead, pass 2. IDs refer to the [MASTER_PLAN Decision log](../MASTER_PLAN.md#13-decision-log)._
+
+| Item | Outcome |
+|---|---|
+| B1 access-token hook | **Accepted (D-24).** The claims are `app_role` and `onboarded`, plus `membership_status` for recruiters, which Frontend's layout needs. They are UX hints only and never feed RLS. |
+| B2 role capture | **Accepted (D-25).** A signed `np_role_intent` cookie for OAuth, `options.data.role` for email sign-up, and `/onboarding/role` only when the role is still null. |
+| B3 sweeper | **Inngest cron `sweep-stuck-work` (D-01).** pg_cron is kept only for SQL-only retention jobs. `pg_net` and Vault are dropped from data.md. |
+| B4 no grant cron | **Accepted (D-02).** |
+| B5 no AV scan in MVP | **Accepted (D-13).** Attachment-only downloads, a text-first viewer, and ClamAV Later. |
+| B6 10-minute delayed status emails, B7 50 MB ZIP | **Accepted.** |
+| B8 zipball | **Accepted (D-04).** |
+| Onboarding gate | **Resume only (D-08).** §2.1 and §4.2 have been updated, and `linkedin_not_ready` is removed. |
+| Account deletion and export | **Server actions `deleteAccount` (re-auth < 5 min) and `exportMyData` (3/day) (D-28).** There is no `/api/v1/me` DELETE or export route. data.md §7.5 and §8 have been updated. |
+| Admin pages | **User-scoped client + `is_admin()` RLS (D-18).** The ESLint service-role allowlist is `inngest/**`, `scripts/support/**` and `lib/supabase/admin.ts`. |
+| Applicant detail route | **Renamed to `GET /api/v1/jobs/{jobId}/applicants/{applicationId}` (D-26).** |
+| Route paths | **Frontend's paths are canonical**: `/sign-in`, `/sign-up`, and the role homes `/jobs`, `/recruiter/jobs`, `/admin/companies`. §2.1 and §4 have been updated. |
+| Missing `Idempotency-Key` | 422, not 400 (D-10). §4.3 has been updated. |
+| JSON casing | camelCase everywhere, `nextCursor` and `error.requestId` (D-12). |
