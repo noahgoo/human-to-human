@@ -132,7 +132,10 @@ with base as (
     re.rationale              as github_rationale,
     re.commit_sha             as github_commit_sha,
     re.completed_at           as github_reviewed_at,
-    re.prompt_version         as repo_prompt_version
+    re.prompt_version         as repo_prompt_version,
+    re.repo_meta              as github_repo_meta,      -- shown with "ownership not verified"
+    re.flags                  as github_flags,
+    private.fit_flags_for_member(fe.id) as fit_flags    -- fit_evaluations.flags is not column-granted to clients
   from public.applications a
   join public.jobs j                    on j.id = a.job_id
   left join public.profiles p           on p.id = a.applicant_id
@@ -296,6 +299,8 @@ type RankedApplicant = {
   github: null | {                   // null for non-technical jobs
     status: 'pending' | 'running' | 'succeeded' | 'failed';
     failureCode: string | null;
+    repoFullName: string | null;     // from repo_meta; UI notes "ownership not verified"
+    flags: { injectionSuspected?: boolean; insufficientCode?: boolean; likelyTemplateOrFork?: boolean } | null;
     repoUrl: string; commitSha: string | null; reviewedAt: string | null;
     overall: number | null;          // 1.00–10.00
     overallScaled: number | null;    // 0–100

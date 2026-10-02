@@ -60,7 +60,7 @@
 |---|---|
 | `anon` | No JWT. |
 | **Applicant** | `authenticated` and `profiles.role = 'applicant'`. |
-| **Recruiter (member)** | `authenticated`, `profiles.role = 'recruiter'` and a `recruiter_memberships` row with `verification_status = 'verified'` for the company in question. |
+| **Recruiter (member)** | `authenticated`, `profiles.role = 'recruiter'`, a `recruiter_memberships` row with `verification_status = 'verified'` **and** the company itself `verified` (`is_company_member(company_id)`). |
 | **Recruiter (pending)** | Recruiter whose membership is `pending` or `rejected`. |
 | **Admin** | `profiles.role = 'admin'` (seeded by hand, brief OQ5). |
 | `service_role` | Inngest functions and `lib/supabase/admin.ts`. Bypasses RLS. |
@@ -180,10 +180,16 @@ create table public.applicant_profiles (
 create or replace function private.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
-  insert into public.profiles (id, email, full_name, avatar_url)
+  insert into public.profiles (id, email, full_name, avatar_url, role)
   values (new.id, new.email,
           coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name'),
-          new.raw_user_meta_data->>'avatar_url');
+          new.raw_user_meta_data->>'avatar_url',
+          -- email/password sign-up passes options.data.role (backend.md B2); whitelisted, never 'admin'
+          case when new.raw_user_meta_data->>'role' in ('applicant','recruiter')
+               then (new.raw_user_meta_data->>'role')::public.user_role end);
+  if new.raw_user_meta_data->>'role' = 'applicant' then
+    insert into public.applicant_profiles (profile_id) values (new.id);
+  end if;
   return new;
 end $$;
 create trigger on_auth_user_created after insert on auth.users
@@ -234,13 +240,17 @@ create table public.companies (
   verification_status  public.verification_status not null default 'pending',
   verified_at          timestamptz,
   created_by           uuid references public.profiles(id) on delete set null,
+  -- company-verification.md §3
+  review_reason        text check (review_reason in ('domain_mismatch','name_collision','free_mail','manual_request')),
+  rejected_reason      text check (char_length(rejected_reason) <= 1000),
+  reviewed_by          uuid references public.profiles(id) on delete set null,
+  reviewed_at          timestamptz,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz,
-  check ((verification_status = 'verified') = (verified_at is not null))
+  check (verification_status <> 'verified' or verified_at is not null)   -- one-directional: suspension keeps history
 );
--- two verified companies cannot share a normalised name
-create unique index companies_name_norm_verified_uq on public.companies(name_normalized)
-  where verification_status = 'verified';
+-- NOT unique: two real "Acme"s can exist; collisions route to admin review (company-verification.md C2)
+create index companies_name_norm_idx on public.companies(name_normalized);
 create index companies_name_norm_trgm on public.companies using gin (name_normalized extensions.gin_trgm_ops);
 
 -- NEW: alternative names used for connection matching
@@ -263,11 +273,13 @@ create table public.company_domains (
                          check (domain = lower(domain)
                                 and domain ~ '^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$'),
   verification_status  public.verification_status not null default 'pending',
-  verification_method  text check (verification_method in ('email_otp', 'dns_txt', 'admin')),
+  verification_method  text check (verification_method in ('email_link', 'admin', 'dns_txt')),
   verified_at          timestamptz,
+  verified_by          uuid references public.profiles(id) on delete set null,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz
 );
+-- admin removal DELETEs the row (not 'rejected'), so the globally unique domain can be claimed again
 create index company_domains_company_idx on public.company_domains(company_id);
 
 create table public.recruiter_memberships (
@@ -275,20 +287,55 @@ create table public.recruiter_memberships (
   company_id           uuid not null references public.companies(id) on delete cascade,
   profile_id           uuid not null references public.profiles(id) on delete cascade,
   verification_status  public.verification_status not null default 'pending',
-  verified_via         text check (verified_via in ('email_domain', 'admin')),
+  verified_via         text check (verified_via in ('email_domain', 'admin', 'company_admin')),
   verified_at          timestamptz,
   verified_by          uuid references public.profiles(id) on delete set null,
   is_company_admin     boolean not null default false,
+  -- company-verification.md §3
+  work_email             text check (work_email = lower(work_email) and char_length(work_email) <= 320),
+  work_email_verified_at timestamptz,
+  evidence               jsonb,              -- {linkedinUrl, note}; visible to admins and verified colleagues
+  approved_by            uuid references public.profiles(id) on delete set null,
+  removed_at             timestamptz,
+  removed_by             uuid references public.profiles(id) on delete set null,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz,
   unique (company_id, profile_id),
-  check ((verification_status = 'verified') = (verified_at is not null and verified_via is not null))
+  check (verification_status <> 'verified' or (verified_at is not null and verified_via is not null))
 );
 -- D4: at most one live membership per recruiter
 create unique index recruiter_memberships_one_live_uq on public.recruiter_memberships(profile_id)
   where verification_status <> 'rejected';
 create index recruiter_memberships_company_verified_idx on public.recruiter_memberships(company_id, profile_id)
   where verification_status = 'verified';
+create index recruiter_memberships_company_admins_idx on public.recruiter_memberships(company_id)
+  where is_company_admin and verification_status = 'verified';
+
+-- NEW (company-verification.md): single-use magic-link tokens. RLS on, NO client policies; definer RPCs only.
+create table public.work_email_verifications (
+  id             uuid primary key default gen_random_uuid(),
+  profile_id     uuid not null references public.profiles(id) on delete cascade,
+  membership_id  uuid not null references public.recruiter_memberships(id) on delete cascade,
+  email          text not null check (email = lower(email) and char_length(email) <= 320),
+  domain         text not null check (domain = lower(domain)),
+  token_hash     bytea not null unique check (octet_length(token_hash) = 32),   -- sha256(raw token)
+  expires_at     timestamptz not null,
+  consumed_at    timestamptz,
+  attempt_count  smallint not null default 0 check (attempt_count between 0 and 5),
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz
+);
+create index work_email_verifications_membership_idx on public.work_email_verifications(membership_id);
+create index work_email_verifications_profile_idx    on public.work_email_verifications(profile_id, created_at desc);
+create index work_email_verifications_open_idx       on public.work_email_verifications(expires_at) where consumed_at is null;
+
+-- NEW (company-verification.md): free-mail / disposable blocklist. Seeded by a MIGRATION (needed in prod).
+create table public.blocked_email_domains (
+  domain      text primary key check (domain = lower(domain)),
+  reason      text not null check (reason in ('free_mail', 'disposable', 'manual')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz
+);
 
 -- a verified domain contributes its first label as an alias ('stripe.com' -> 'stripe')
 create or replace function private.alias_from_domain() returns trigger
@@ -309,7 +356,7 @@ create trigger company_domains_alias after insert or update of verification_stat
 -- updated_at triggers on all four tables (omitted for brevity; same pattern as 0003)
 ```
 
-Inserts into `companies`, `company_domains` and `recruiter_memberships` happen through Backend's company-verification RPCs (SECURITY DEFINER). Clients have no INSERT policy on them.
+Inserts into `companies`, `company_domains` and `recruiter_memberships` happen through Backend's company-verification RPCs (SECURITY DEFINER: `create_company_claim`, `create_join_request`, `confirm_work_email`, `approve_membership`, `remove_membership`, `set_company_admin`, `admin_review_company`, `admin_add/remove_company_domain`, `update_company_profile`). Clients have no INSERT or UPDATE grant on them; a name change on a verified company re-queues admin review inside `update_company_profile`.
 
 ### 3.5 Jobs (`…_0004_companies.sql`, continued)
 
@@ -322,7 +369,7 @@ create table public.jobs (
   description   text not null check (char_length(description) between 1 and 20000),
   requirements  text not null check (char_length(requirements) between 1 and 10000),
   location      text check (char_length(location) <= 200),
-  token_cost    smallint not null check (token_cost between 1 and 3),
+  token_cost    smallint not null default 2 check (token_cost between 1 and 3),
   is_technical  boolean not null default false,
   status        public.job_status not null default 'draft',
   published_at  timestamptz,
@@ -341,9 +388,18 @@ begin
   if new.company_id <> old.company_id then
     raise exception 'company_id is immutable' using errcode = 'P0001', hint = 'VALIDATION_FAILED';
   end if;
-  if new.is_technical <> old.is_technical
+  -- token-system.md T3: pricing and technical flag freeze at the first application
+  if (new.is_technical <> old.is_technical or new.token_cost <> old.token_cost)
      and exists (select 1 from public.applications a where a.job_id = old.id) then
-    raise exception 'is_technical is locked once applications exist' using errcode = 'P0001', hint = 'CONFLICT';
+    raise exception 'pricing is locked once applications exist' using errcode = 'P0001', hint = 'CONFLICT',
+      detail = '{"reason":"pricing_locked"}';
+  end if;
+  -- company-verification.md §2.4: publishing needs a verified membership AND a verified company
+  if new.status = 'open' and old.status <> 'open'
+     and current_user not in ('postgres', 'service_role')
+     and not public.is_company_member(new.company_id) then
+    raise exception 'company not verified' using errcode = 'P0001', hint = 'FORBIDDEN',
+      detail = '{"reason":"company_not_verified"}';
   end if;
   if old.status = 'archived' and new.status <> 'archived' then
     raise exception 'archived jobs cannot be reopened' using errcode = 'P0001', hint = 'CONFLICT';
@@ -366,7 +422,7 @@ create trigger jobs_guard before update on public.jobs
   for each row execute function private.guard_job_update();
 ```
 
-Allowed job transitions: `draft → open`, `open ⇄ closed`, `open|closed → archived`. Opening a job also requires the company to be `verified` (checked in the INSERT/UPDATE policy, §4).
+Allowed job transitions: `draft → open`, `open ⇄ closed`, `open|closed → archived`. Pending recruiters may create and edit drafts; opening a job requires a verified membership and a verified company (trigger above for UPDATE, `jobs_insert_member` policy for INSERT with `status = 'open'`). Archiving refunds `submitted` applications (token-system.md §2.4).
 
 ### 3.6 LinkedIn data (`…_0005_linkedin.sql`)
 
@@ -516,7 +572,14 @@ create table public.fit_evaluations (
   prompt_version      text not null,
   resume_id           uuid references public.resumes(id) on delete set null,          -- provenance
   linkedin_import_id  uuid references public.linkedin_imports(id) on delete set null,
-  error               text,
+  error               text,                                -- internal code only
+  -- ai-evaluation.md §6
+  sub_scores          jsonb,                               -- {skills, experience, seniority, education|null, weights_used, caps_applied}
+  requirements        jsonb check (pg_column_size(requirements) < 64000),   -- [{text, importance, status, evidence≤300}]
+  band                text check (band in ('strong', 'good', 'moderate', 'limited')),
+  flags               jsonb,                               -- NOT granted to authenticated (§4.3); recruiters via helper
+  job_updated_at      timestamptz not null,
+  attempt_count       smallint not null default 0,
   started_at          timestamptz,
   completed_at        timestamptz,
   created_at          timestamptz not null default now(),
@@ -527,6 +590,9 @@ create table public.fit_evaluations (
 create index fit_evaluations_cache_idx on public.fit_evaluations(applicant_id, job_id, input_hash, created_at desc)
   where status = 'succeeded';
 create index fit_evaluations_sweep_idx on public.fit_evaluations(created_at)
+  where status in ('pending', 'running');
+-- concurrent Check-fit clicks dedupe onto one in-flight row (ai-evaluation.md §2.7)
+create unique index fit_evaluations_inflight_dedupe on public.fit_evaluations(applicant_id, input_hash)
   where status in ('pending', 'running');
 
 create table public.applications (
@@ -578,10 +644,18 @@ create table public.repo_evaluations (
   testing_score       smallint check (testing_score      between 1 and 10),
   overall_score       numeric(4,2) generated always as
                         ((security_score + organization_score + performance_score + testing_score)::numeric / 4) stored,
-  rationale           jsonb,     -- {"security":{"summary":"…","evidence":[{"path":"…","lines":"10-24","note":"…"}]}, …}
-  files_analyzed      integer check (files_analyzed >= 0),
+  rationale           jsonb,     -- {"security":{"summary":"…","confidence":…,"evidence":[{"path":"…","lines":"10-24","note":"…"}]}, …, overall_summary, notable_strengths, notable_risks}
+  repo_meta           jsonb,     -- {full_name, default_branch, stars, forks, is_fork, language, size_kb, pushed_at, license}
+  signals             jsonb,     -- deterministic signals; never secret values
+  flags               jsonb,     -- {injection_suspected, injection_paths, insufficient_code, likely_template_or_fork}
+  strategy            text check (strategy in ('single', 'map_reduce')),
+  files_considered    integer check (files_considered >= 0),
+  files_analyzed      integer check (files_analyzed >= 0),      -- files sent to the model
   bytes_analyzed      bigint  check (bytes_analyzed >= 0),
-  failure_code        text,      -- values defined by Backend in ai-evaluation.md
+  tokens_sent         integer check (tokens_sent >= 0),
+  failure_code        text check (failure_code in ('not_found_or_private', 'too_large', 'too_many_files',
+                        'archive_too_large', 'empty', 'no_reviewable_code', 'timeout', 'llm_failed',
+                        'integrity', 'github_unavailable')),
   error               text,
   attempt_count       smallint not null default 0,
   model               text,
@@ -595,6 +669,9 @@ create table public.repo_evaluations (
                                    and rationale is not null))
 );
 create index repo_evaluations_sweep_idx on public.repo_evaluations(created_at) where status in ('pending', 'running');
+-- cross-application review cache (ai-evaluation.md §4.3); repo_url is canonical (lowercase, no .git / trailing slash)
+create index repo_evaluations_cache_idx on public.repo_evaluations(repo_url, commit_sha, prompt_version, completed_at desc)
+  where status = 'succeeded';
 
 -- terminal evaluations are immutable (the ranking snapshot must not drift)
 create or replace function private.guard_terminal_evaluation() returns trigger
@@ -611,7 +688,7 @@ create trigger repo_evaluations_final before update on public.repo_evaluations
   for each row execute function private.guard_terminal_evaluation();
 ```
 
-A failed `repo_evaluations` row can be moved back to `pending` (admin re-run). A succeeded row cannot be changed; a re-review would be a new feature with its own history.
+A failed `repo_evaluations` or `fit_evaluations` row can be moved back to `pending` (admin re-run, `adminRetryEvaluation`), updating the **same** row so `applications.fit_evaluation_id` stays valid. A succeeded row cannot be changed; a re-review would be a new feature with its own history.
 
 ### 3.9 Tokens, AI usage, audit (`…_0008_ledger_audit.sql`)
 
@@ -622,39 +699,53 @@ create table public.token_ledger (
   period          text not null check (period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),     -- 'YYYY-MM' UTC
   kind            public.token_entry_kind not null,
   amount          integer not null,
-  application_id  uuid references public.applications(id) on delete set null,
-  note            text check (char_length(note) <= 500),
+  -- CASCADE, not SET NULL: the spend/refund CHECK requires application_id, so SET NULL would
+  -- make account-deletion cascades fail (token-system.md review)
+  application_id  uuid references public.applications(id) on delete cascade,
+  reason          text check (char_length(reason) between 1 and 500),             -- required for refund / adjustment
   created_by      uuid references public.profiles(id) on delete set null,          -- admin for adjustments
   created_at      timestamptz not null default now(),
   updated_at      timestamptz,
   check (
     (kind = 'monthly_grant'     and amount = 10 and application_id is null) or
     (kind = 'application_spend' and amount between -3 and -1 and application_id is not null) or
-    (kind = 'refund'            and amount between 1 and 3) or
-    (kind = 'adjustment'        and amount <> 0 and note is not null)
+    (kind = 'refund'            and amount between 1 and 3 and application_id is not null and reason is not null) or
+    (kind = 'adjustment'        and amount <> 0 and reason is not null)
   )
 );
-create unique index token_ledger_grant_uq on public.token_ledger(applicant_id, period) where kind = 'monthly_grant';
-create unique index token_ledger_spend_uq on public.token_ledger(application_id)        where kind = 'application_spend';
+create unique index token_ledger_grant_uq  on public.token_ledger(applicant_id, period) where kind = 'monthly_grant';
+create unique index token_ledger_spend_uq  on public.token_ledger(application_id)        where kind = 'application_spend';
+create unique index token_ledger_refund_uq on public.token_ledger(application_id)        where kind = 'refund';
+-- No grant cron: get_token_balance() counts a missing grant as a virtual +10; apply_to_job and
+-- admin_adjust_tokens materialise it (token-system.md T1/T2). Period helpers: token_period(ts), current_token_period().
 create index token_ledger_balance_idx on public.token_ledger(applicant_id, period);
 
+-- full spec from ai-evaluation.md §6. Never stores prompts or completions.
 create table public.ai_usage (
-  id             uuid primary key default gen_random_uuid(),
-  user_id        uuid references public.profiles(id) on delete set null,
-  task           text not null check (task in ('fit', 'repo', 'resume_parse')),
-  subject_id     uuid,                       -- fit_evaluations.id / repo_evaluations.id / resumes.id (no FK)
-  model          text not null,
-  input_tokens   integer check (input_tokens  >= 0),
-  output_tokens  integer check (output_tokens >= 0),
-  cost_usd       numeric(10,6) check (cost_usd >= 0),
-  latency_ms     integer check (latency_ms >= 0),
-  status         text not null check (status in ('succeeded', 'failed')),
-  error_code     text,
-  created_at     timestamptz not null default now(),
-  updated_at     timestamptz
+  id               uuid primary key default gen_random_uuid(),
+  user_id          uuid references public.profiles(id) on delete set null,
+  task             text not null check (task in ('fit', 'repo', 'resume_parse')),
+  stage            text not null default 'single' check (stage in ('single', 'map', 'reduce', 'sanity_rerun')),
+  subject_id       uuid,                       -- fit_evaluations.id / repo_evaluations.id (no FK)
+  model            text not null,              -- model that actually answered
+  requested_model  text not null,
+  prompt_version   text not null,
+  provider         text,
+  generation_id    text,
+  input_tokens     integer not null default 0 check (input_tokens  >= 0),
+  output_tokens    integer not null default 0 check (output_tokens >= 0),
+  cost_usd         numeric(10,6) not null default 0 check (cost_usd >= 0),
+  latency_ms       integer check (latency_ms >= 0),
+  attempt          smallint not null default 1,
+  status           text not null check (status in ('ok', 'error', 'schema_invalid', 'timeout', 'anomaly')),
+  error_code       text,
+  request_id       text,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz
 );
-create index ai_usage_user_idx on public.ai_usage(user_id, created_at desc);
-create index ai_usage_time_idx on public.ai_usage(created_at);
+create index ai_usage_user_idx    on public.ai_usage(user_id, created_at desc);
+create index ai_usage_time_idx    on public.ai_usage(created_at);
+create index ai_usage_subject_idx on public.ai_usage(subject_id);
 
 -- NEW (D7). Append-only. actor_id/subject_id have no FK so the record survives account deletion
 -- as a pseudonymous trace.
@@ -666,7 +757,8 @@ create table public.audit_log (
                   'company.verification_changed', 'membership.verification_changed',
                   'linkedin.import_replaced', 'linkedin.import_deleted', 'resume.deleted',
                   'account.export', 'account.delete_requested', 'account.deleted',
-                  'contact.revealed', 'admin.repo_eval_rerun', 'admin.token_adjustment')),
+                  'contact.revealed', 'admin.repo_eval_rerun', 'admin.token_adjustment',
+                  'company.domain_added', 'company.domain_removed', 'email_domain.blocked')),   -- company-verification.md
   subject_type  text,
   subject_id    uuid,
   company_id    uuid,
@@ -704,13 +796,13 @@ $$;
 | `auth.users` | `profiles` | CASCADE (account deletion entry point) |
 | `profiles` (applicant) | `applicant_profiles`, `linkedin_imports` → positions/skills/education/connections, `resumes`, `fit_evaluations`, `applications` → `application_events`, `repo_evaluations`; `token_ledger` | CASCADE |
 | `profiles` | `ai_usage.user_id`, `jobs.created_by`, `companies.created_by`, `application_events.actor_id`, `recruiter_memberships.verified_by`, `token_ledger.created_by` | SET NULL |
-| `profiles` (recruiter) | `recruiter_memberships` | CASCADE |
+| `profiles` (recruiter) | `recruiter_memberships`, `work_email_verifications` | CASCADE |
 | `companies` | `company_domains`, `company_aliases`, `recruiter_memberships`, `jobs` | CASCADE (company deletion is admin-only and blocked by `applications.job_id RESTRICT` if any job has applications) |
 | `jobs` | `applications` | **RESTRICT** (jobs with applications are archived) |
 | `jobs` | `fit_evaluations` | CASCADE |
 | `linkedin_imports` | its rows | CASCADE; `applicant_profiles.active_linkedin_import_id` and `fit_evaluations.linkedin_import_id` SET NULL |
 | `resumes` | `applications.resume_id`, `applicant_profiles.active_resume_id`, `fit_evaluations.resume_id` | SET NULL (column) |
-| `applications` | `application_events`, `repo_evaluations` | CASCADE; `token_ledger.application_id` SET NULL |
+| `applications` | `application_events`, `repo_evaluations`, `token_ledger` (spend/refund rows) | CASCADE (only happens inside account deletion) |
 | `fit_evaluations` | `applications.fit_evaluation_id` | SET NULL (column) |
 | `audit_log` | (no FKs) | survives, pseudonymous |
 
@@ -726,29 +818,39 @@ language sql stable security definer set search_path = '' as $$
   select role from public.profiles where id = (select auth.uid())
 $$;
 
+-- admin actions require MFA (company-verification.md C6)
 create or replace function public.is_admin() returns boolean
 language sql stable security definer set search_path = '' as $$
   select coalesce((select role = 'admin' from public.profiles where id = (select auth.uid())), false)
+     and coalesce((select auth.jwt()->>'aal'), '') = 'aal2'
 $$;
 
--- canonical RLS helper (MASTER_PLAN §4)
+-- canonical RLS helper (MASTER_PLAN §4).
+--   p_require_verified = true  (default): verified membership AND verified company (company-verification.md §2.2)
+--   p_require_verified = false: any non-rejected membership (pending recruiters: own company, draft jobs)
 create or replace function public.is_company_member(p_company_id uuid, p_require_verified boolean default true)
 returns boolean language sql stable security definer set search_path = '' as $$
   select exists (
     select 1 from public.recruiter_memberships m
+    join public.companies c on c.id = m.company_id
     where m.company_id = p_company_id
       and m.profile_id = (select auth.uid())
-      and (not p_require_verified or m.verification_status = 'verified')
+      and case when p_require_verified
+               then m.verification_status = 'verified' and c.verification_status = 'verified'
+               else m.verification_status <> 'rejected' end
   )
+$$;
+
+create or replace function public.is_company_admin(p_company_id uuid) returns boolean
+language sql stable security definer set search_path = '' as $$
+  select public.is_company_member(p_company_id)
+     and exists (select 1 from public.recruiter_memberships m
+                 where m.company_id = p_company_id and m.profile_id = (select auth.uid()) and m.is_company_admin)
 $$;
 
 create or replace function private.is_job_member(p_job_id uuid) returns boolean
 language sql stable security definer set search_path = '' as $$
-  select exists (
-    select 1 from public.jobs j
-    join public.recruiter_memberships m on m.company_id = j.company_id
-    where j.id = p_job_id and m.profile_id = (select auth.uid()) and m.verification_status = 'verified'
-  )
+  select exists (select 1 from public.jobs j where j.id = p_job_id and public.is_company_member(j.company_id))
 $$;
 
 -- recruiter may see this applicant because they applied to one of the recruiter's company jobs
@@ -757,10 +859,31 @@ language sql stable security definer set search_path = '' as $$
   select exists (
     select 1 from public.applications a
     join public.jobs j on j.id = a.job_id
-    join public.recruiter_memberships m on m.company_id = j.company_id
-    where a.applicant_id = p_applicant_id
-      and m.profile_id = (select auth.uid()) and m.verification_status = 'verified'
+    where a.applicant_id = p_applicant_id and public.is_company_member(j.company_id)
   )
+$$;
+
+-- applicant-safe repo review state (ai-evaluation.md A5). Coarse: no scores, no 'integrity'.
+create or replace function private.my_repo_review_state(p_application_id uuid,
+  out status text, out reason text)
+language sql stable security definer set search_path = '' as $$
+  select case r.status when 'succeeded' then 'completed' when 'failed' then 'failed' else 'pending' end,
+         case when r.status <> 'failed' then null
+              when r.failure_code in ('not_found_or_private','too_large','too_many_files',
+                                      'archive_too_large','empty','no_reviewable_code') then r.failure_code
+              else 'system' end
+  from public.repo_evaluations r
+  join public.applications a on a.id = r.application_id
+  where r.application_id = p_application_id and a.applicant_id = (select auth.uid())
+$$;
+
+-- fit flags (injection signals) are hidden from applicants by column grant; members read them here
+create or replace function private.fit_flags_for_member(p_fit_id uuid) returns jsonb
+language sql stable security definer set search_path = '' as $$
+  select fe.flags from public.fit_evaluations fe
+  join public.applications a on a.fit_evaluation_id = fe.id
+  where fe.id = p_fit_id and private.is_job_member(a.job_id)
+  limit 1
 $$;
 
 create or replace function private.has_applied_to_job(p_job_id uuid) returns boolean
@@ -775,7 +898,7 @@ language sql stable security definer set search_path = '' as $$
 $$;
 
 grant execute on function public.current_user_role(), public.is_admin(),
-  public.is_company_member(uuid, boolean) to authenticated;
+  public.is_company_member(uuid, boolean), public.is_company_admin(uuid) to authenticated;
 grant execute on all functions in schema private to authenticated;
 ```
 
@@ -787,16 +910,18 @@ S = select, I = insert, U = update, D = delete. "own" means `applicant_id`/`prof
 |---|---|---|---|---|
 | `profiles` | S own; U own (`full_name`, `avatar_url` only, via column grant) | S own; S colleagues in co; S applicants who applied to co jobs; U own | S own; U own | S all |
 | `applicant_profiles` | S/U own (`headline`, `target_seniority`, `location_pref`, `active_resume_id`) | S for applicants to co jobs | — | — |
-| `companies` | S verified companies; S companies of jobs they applied to (`companies_select_applied`) | S own company (any status); U own company `website`, `logo_url` if `is_company_admin` | S own company | S/U all |
+| `companies` | S verified companies; S companies of jobs they applied to (`companies_select_applied`) | S own company (any status); writes via `update_company_profile` RPC only | S own company | S/U all |
 | `company_aliases` | S for verified companies (needed by `connections_at_company`) | S co | — | S/I/U/D all |
-| `company_domains` | — | S co | S own company | S/U all |
+| `company_domains` | — | S co | S own company | S/U/D all |
 | `recruiter_memberships` | — | S own; S co | S own | S/U all |
-| `jobs` | S `status='open'`; S jobs they applied to (any status) | S co (all statuses); I co (company verified, `created_by = uid`, status `draft`/`open`); U co; D co when `draft` | — | S all |
+| `work_email_verifications` | — | — (definer RPCs only) | — | — |
+| `blocked_email_domains` | S | S | S | S/I/U/D |
+| `jobs` | S `status='open'` of verified companies; S jobs they applied to (any status) | S co (all statuses); I co (`created_by = uid`; `open` only when verified); U co; D co when `draft` | S/I/U own company's **drafts** (publish blocked by trigger) | S all |
 | `linkedin_imports` | S own; I own (status must be `pending`); D own | — | — | — |
 | `linkedin_positions` / `linkedin_skills` / `linkedin_education` | S own | — (D3) | — | — |
 | **`connections`** | **S own only** | **— (never)** | — | **— (never)** |
 | `resumes` | S/I/D own | S resumes snapshotted on an application to a co job | — | — |
-| `fit_evaluations` | S own; I own (`status='pending'`, no score) | S rows linked from an application to a co job | — | — |
+| `fit_evaluations` | S own (all columns **except `flags`**); I own (`status='pending'`, no score) | S rows linked from an application to a co job (flags via `fit_flags_for_member`) | — | — |
 | `applications` | S own (writes via `apply_to_job` / `withdraw_application` RPCs only) | S co (writes via `set_application_status` RPC only) | — | — |
 | `application_events` | **—** (status comes from `my_applications`) | S co | — | — |
 | **`repo_evaluations`** | **— (never)** | S co | — | — |
@@ -837,21 +962,20 @@ create policy profiles_update_own on public.profiles for update to authenticated
 grant select, insert, update, delete on public.jobs to authenticated;
 
 create policy jobs_select_open on public.jobs for select to authenticated
-  using (status = 'open' and public.current_user_role() = 'applicant');
+  using (status = 'open' and public.current_user_role() = 'applicant' and private.company_is_verified(company_id));
 create policy jobs_select_applied on public.jobs for select to authenticated
   using (private.has_applied_to_job(id));
 create policy jobs_select_member on public.jobs for select to authenticated
-  using (public.is_company_member(company_id));
+  using (public.is_company_member(company_id, false));         -- pending recruiters see their drafts
 create policy jobs_insert_member on public.jobs for insert to authenticated
-  with check (public.is_company_member(company_id)
-              and private.company_is_verified(company_id)
-              and created_by = (select auth.uid())
-              and status in ('draft', 'open'));
+  with check (created_by = (select auth.uid())
+              and ((status = 'draft' and public.is_company_member(company_id, false))
+                or (status = 'open'  and public.is_company_member(company_id))));
 create policy jobs_update_member on public.jobs for update to authenticated
-  using (public.is_company_member(company_id))
-  with check (public.is_company_member(company_id) and private.company_is_verified(company_id));
+  using (public.is_company_member(company_id, false))
+  with check (public.is_company_member(company_id, false));     -- publish/verification checked in guard_job_update
 create policy jobs_delete_draft on public.jobs for delete to authenticated
-  using (public.is_company_member(company_id) and status = 'draft');
+  using (public.is_company_member(company_id, false) and status = 'draft');
 
 ------------------------------------------------------------------ connections (third-party PII)
 grant select on public.connections to authenticated;     -- no insert/update/delete grant: service role only
@@ -874,7 +998,12 @@ create policy resumes_select_recruiter on public.resumes for select to authentic
                  where a.resume_id = resumes.id and private.is_job_member(a.job_id)));
 
 ------------------------------------------------------------------ fit_evaluations
-grant select, insert on public.fit_evaluations to authenticated;
+-- column grant: `flags` (injection signals) is never readable by clients (ai-evaluation.md review)
+grant select (id, applicant_id, job_id, input_hash, status, confidence_score, explanation, model, prompt_version,
+              resume_id, linkedin_import_id, sub_scores, requirements, band, job_updated_at,
+              started_at, completed_at, created_at, updated_at, error)
+  on public.fit_evaluations to authenticated;
+grant insert on public.fit_evaluations to authenticated;
 create policy fit_select_own on public.fit_evaluations for select to authenticated
   using (applicant_id = (select auth.uid()));
 create policy fit_insert_own on public.fit_evaluations for insert to authenticated
@@ -927,7 +1056,7 @@ create policy ai_usage_admin  on public.ai_usage  for select to authenticated us
 create policy audit_log_admin on public.audit_log for select to authenticated using (public.is_admin());
 ```
 
-The remaining policies (`applicant_profiles`, `companies`, `company_aliases`, `company_domains`, `recruiter_memberships`, LinkedIn row tables) follow the matrix with the same patterns. `applicant_profiles` gets `grant update (headline, target_seniority, location_pref, active_resume_id)`; the composite FK guarantees `active_resume_id` belongs to the same applicant. `active_linkedin_import_id` is set only by the service role during import activation.
+The remaining policies (`applicant_profiles`, `companies`, `company_aliases`, `company_domains`, `recruiter_memberships`, `blocked_email_domains`, LinkedIn row tables) follow the matrix with the same patterns. `companies`, `company_domains` and `recruiter_memberships` get SELECT grants only (plus admin UPDATE/DELETE policies via `is_admin()`); all recruiter-side writes go through the company-verification RPCs. Admin pages should use the user-scoped client so `is_admin()` (aal2) RLS applies, not the service role. `applicant_profiles` gets `grant update (headline, target_seniority, location_pref, active_resume_id)`; the composite FK guarantees `active_resume_id` belongs to the same applicant. `active_linkedin_import_id` is set only by the service role during import activation.
 
 ---
 
@@ -946,8 +1075,13 @@ select
   c.name         as company_name,
   c.logo_url     as company_logo_url,
   a.status, a.token_cost, a.github_repo_url,
-  a.submitted_at, a.status_changed_at
+  a.submitted_at, a.status_changed_at,
+  rs.status      as repo_review_status,    -- pending | completed | failed | null (non-technical)
+  rs.reason      as repo_review_reason,    -- applicant-actionable failure code or 'system'; never scores
+  exists (select 1 from public.token_ledger l
+          where l.application_id = a.id and l.kind = 'refund') as is_refunded
 from public.applications a
+left join lateral private.my_repo_review_state(a.id) rs on true
 join public.jobs j      on j.id = a.job_id
 join public.companies c on c.id = j.company_id
 where a.applicant_id = (select auth.uid());
@@ -955,7 +1089,7 @@ where a.applicant_id = (select auth.uid());
 grant select on public.my_applications to authenticated;
 ```
 
-No confidence score, no GitHub rating, no GitHub review status, no recruiter notes. (The applicant already sees their own confidence on Check fit through `fit_evaluations`; it is not repeated here so the view stays the single "applicant-safe" surface.) The applicant needs SELECT on `companies` for the job's company; `companies_select_applied` covers companies of jobs they applied to, in case a company is later unverified.
+No confidence score, no GitHub rating or rationale, no recruiter notes. The repo review **state** is exposed in coarse form (ai-evaluation.md A5) through the definer helper `private.my_repo_review_state`, because the applicant has no SELECT on `repo_evaluations`; `integrity`, `timeout`, `llm_failed` and `github_unavailable` all collapse to `system`. (The applicant already sees their own confidence on Check fit through `fit_evaluations`; it is not repeated here so the view stays the single "applicant-safe" surface.) The applicant needs SELECT on `companies` for the job's company; `companies_select_applied` covers companies of jobs they applied to, in case a company is later unverified.
 
 ### 5.2 `job_applicant_rankings` (recruiter-only)
 
@@ -973,8 +1107,8 @@ Full definition, sort keys and pagination RPC are in [applicant-ranking.md §Des
 | `current_user_role()`, `is_admin()` | STABLE, definer | RLS helpers |
 | `connections_at_company(p_company_id uuid)` | STABLE, **invoker** | Applicant's own connections at a company. Definition in linkedin-ingestion.md. |
 | `job_applicant_rankings_page(p_job_id, p_limit, p_cursor, …)` | STABLE, invoker | Keyset pagination over the ranking view. Definition in applicant-ranking.md. |
-| `apply_to_job(p_job_id, p_idempotency_key, p_github_repo_url)` | definer | **Specified by Backend** (token-system.md); implemented and pgTAP-tested by Data. Data's requirements for it: sets `applications.resume_id` from `active_resume_id` (D1), stores `request_hash`, rejects when the company is not verified or the job is not `open`, requires `github_repo_url` iff `jobs.is_technical`, inserts the `repo_evaluations` row (`pending`) in the same transaction. |
-| `get_token_balance()` | definer | Backend spec. Reads `token_ledger` for the current UTC period. |
+| `apply_to_job(p_job_id, p_idempotency_key, p_github_repo_url, p_expected_cost default null)` | definer | **Specified by Backend** (token-system.md §3.3, accepted); implemented and pgTAP-tested by Data. Data's requirements for it: sets `applications.resume_id` from `active_resume_id` (D1), stores `request_hash` (over the canonical repo URL), rejects when the company is not verified or the job is not `open`, requires `github_repo_url` iff `jobs.is_technical`, inserts the `repo_evaluations` row (`pending`) in the same transaction. |
+| `get_token_balance()` | STABLE, definer | Backend spec (token-system.md §3.2). Read-only; a missing grant counts as a virtual +10; no grant cron. |
 | `set_application_status(p_application_id, p_to_status, p_note)` | definer | Recruiter shortlist/reject. Checks `is_job_member`; allowed: `submitted ⇄ shortlisted`, `submitted|shortlisted → rejected`, `rejected → shortlisted`; never from `withdrawn`. Updates `status`, `status_changed_at`, inserts `application_events`, calls `log_audit('application.status_changed')`. Backend owns the server action. |
 | `withdraw_application(p_application_id)` | definer | Applicant. From `submitted`/`shortlisted` only. No refund. |
 | `get_applicant_contact(p_application_id) → text` | definer | D2. Returns `profiles.email` if the caller is a job member and the application is `shortlisted`; logs `contact.revealed`. |
@@ -983,6 +1117,11 @@ Full definition, sort keys and pagination RPC are in [applicant-ranking.md §Des
 | `activate_linkedin_import(p_import_id)` | definer, **service role only** | Flips `active_linkedin_import_id` and deletes older imports in one transaction (linkedin-ingestion.md). |
 | `export_my_data() → jsonb` | definer | §7.5. |
 | `private.log_audit(...)` | definer | §3.9. |
+| `is_company_admin(company_id)` | STABLE, definer | Company-admin check for company-verification RPCs. |
+| `private.my_repo_review_state(application_id)` / `private.fit_flags_for_member(fit_id)` | STABLE, definer | Narrow, owner/member-checked reads behind `my_applications` and `job_applicant_rankings`. |
+| `custom_access_token_hook(event jsonb) → jsonb` | STABLE, definer | backend.md B1. Adds `app_role` (`profiles.role`) and `onboarded` (`onboarded_at is not null`) to the JWT claims. `grant execute … to supabase_auth_admin; revoke … from authenticated, anon, public`; `grant select (id, role, onboarded_at) on profiles to supabase_auth_admin` plus policy `profiles_auth_admin_read for select to supabase_auth_admin using (true)`. Claims are UX hints for middleware only: **no RLS policy reads `app_role`**; claims go stale until `refreshSession()`. pgTAP asserts the output shape. |
+| `token_period(ts)`, `current_token_period()`, `token_monthly_grant()`, `ensure_monthly_grant(uid, period)`, `refund_application(id, reason)` (service role), `admin_adjust_tokens(uid, amount, reason)` (`is_admin()`) | per token-system.md | Backend spec; Data implements with `search_path = ''`. |
+| Company-verification RPCs (`create_company_claim`, `create_join_request`, `confirm_work_email[_via_auth]`, `approve_membership`, `remove_membership`, `set_company_admin`, `update_company_profile`, `admin_review_company`, `admin_add/remove_company_domain`) | definer | Backend spec (company-verification.md §3); Data implements and tests. |
 
 All definer functions: `set search_path = ''`, fully qualified names, `revoke execute … from public`, explicit `grant execute … to authenticated` (or to `service_role` only).
 
@@ -997,13 +1136,16 @@ insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
          'application/vnd.openxmlformats-officedocument.wordprocessingml.document']),
   ('linkedin-exports', 'linkedin-exports', false, 52428800,          -- 50 MB
    array['application/zip', 'application/x-zip-compressed',
-         'text/csv', 'application/vnd.ms-excel', 'application/octet-stream']);
+         'text/csv', 'application/vnd.ms-excel', 'application/octet-stream']),
+  ('company-logos', 'company-logos', true, 1048576,                  -- public read, 1 MB, no SVG
+   array['image/png', 'image/jpeg', 'image/webp']);
 ```
 
 | Bucket | Path | Applicant | Recruiter (member) | Others |
 |---|---|---|---|---|
 | `resumes` | `{user_id}/{resume_id}.{pdf\|docx}` | INSERT/SELECT/DELETE in own folder. No UPDATE (no overwrite; a new resume is a new object). | SELECT the object only if it is the resume snapshotted on an application to a co job (used to create 60 s signed URLs). | — |
 | `linkedin-exports` | `{user_id}/{import_id}/{file}` | INSERT only into a folder whose `import_id` is one of their `pending` imports; SELECT/DELETE own folder. | — | — |
+| `company-logos` (public) | `{company_id}/logo.{png\|jpg\|webp}` | — | INSERT/UPDATE/DELETE if `is_company_admin(company_id)` or creator of the still-pending company | public read |
 
 ```sql
 create policy resumes_obj_insert on storage.objects for insert to authenticated
@@ -1080,6 +1222,8 @@ Parsers must also never log row contents (pino redaction on `row`, `record`; Sen
 | `fit_evaluations` not referenced by an application | 180 days (cache only) | pg_cron daily |
 | `linkedin_imports` stuck in `pending` (never uploaded) | 24 hours | pg_cron hourly → marks `failed` (`ABANDONED`); raw purge follows |
 | `audit_log` | 365 days | pg_cron daily |
+| `work_email_verifications` (consumed or expired) | 30 days | Inngest `purge-expired-data` (backend.md) |
+| Pending companies with no confirmed work email | 7 days, then deleted (draft jobs cascade) | Inngest `purge-expired-data` |
 | `ai_usage` | 400 days (cost reporting), `user_id` nulled on account deletion | pg_cron daily |
 | Everything user-owned | Until the user deletes it or the account | cascade |
 | Backups | Supabase PITR window (7 days). Deleted data may persist in backups until it expires; disclosed in the privacy notice. | Supabase |
@@ -1174,6 +1318,7 @@ RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTE
 ## 10. Edge cases
 
 - **Role not chosen yet:** `current_user_role()` is null → applicant-only and recruiter-only policies fail closed; the user can read only their own profile.
+- **Company suspended:** `is_company_member` (verified form) checks the company too, so every recruiter policy fails closed at once; jobs are archived and `submitted` applications refunded (token-system.md §2.4).
 - **Recruiter membership revoked or rejected:** `is_company_member` returns false immediately; they lose job and applicant access on the next query. Signed URLs already issued live 60 s.
 - **Two recruiters edit a job concurrently:** last write wins; `updated_at` is returned so Frontend can warn on stale edits (optional optimistic check `eq('updated_at', …)`).
 - **Job toggled technical after applications:** blocked by trigger (`CONFLICT`).
@@ -1182,7 +1327,7 @@ RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTE
 - **Applicant deletes account mid-evaluation:** Inngest update hits zero rows (cascaded); functions must treat "row not found" as success-and-stop.
 - **Same email in two auth identities (Google + email):** Supabase links identities by verified email; one profile. If not linked, two profiles; role choice is per profile.
 - **Admin is also a recruiter:** not supported; an admin account has role `admin` only.
-- **Timezone at month boundary:** period is computed with `to_char(now() at time zone 'utc', 'YYYY-MM')` everywhere (one SQL helper, `private.current_period()`).
+- **Timezone at month boundary:** period is computed with `to_char(now() at time zone 'utc', 'YYYY-MM')` everywhere (one SQL helper, `current_token_period()`, token-system.md).
 - **`select *` on profiles from the client:** permission error by design (email not granted). Use explicit columns.
 - **Very large connection sets (30k):** inserts are chunked by the parser (1,000 rows per request); matching uses the btree index for exact and the trigram index for fuzzy.
 
@@ -1203,7 +1348,10 @@ RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTE
 | `06_status_transitions.test.sql` | `set_application_status` matrix; withdrawn terminal; events written; non-member forbidden |
 | `07_normalize.test.sql` | all vectors in linkedin-ingestion.md |
 | `08_ranking.test.sql` | expected order of the ranking fixture (applicant-ranking.md), page boundaries, tie-breaks |
-| `09_cascade.test.sql` | deleting an applicant's `auth.users` row removes rows from every user-owned table and nulls `ai_usage.user_id`; `audit_log` rows survive; deleting a job with applications fails |
+| `09_cascade.test.sql` | deleting an applicant's `auth.users` row (with spend **and refund** ledger rows) removes rows from every user-owned table and nulls `ai_usage.user_id`; `audit_log` rows survive; deleting a job with applications fails |
+| `11_company_verification.test.sql` | `is_company_member` false when membership **or** company unverified; pending recruiter can insert/update drafts but cannot publish; applicants never see jobs of unverified companies; no client access to `work_email_verifications`; admin policies require `aal2` |
+| `12_access_token_hook.test.sql` | hook output contains `app_role` and `onboarded`; not executable by `authenticated` |
+| `13_applicant_safe_fields.test.sql` | applicant cannot select `fit_evaluations.flags`; `my_applications.repo_review_reason` never returns `integrity`; pricing lock raises `pricing_locked` |
 | `10_storage.test.sql` | object policies: own folder only; LinkedIn upload denied unless a `pending` import with that id exists; recruiter select limited to snapshotted resumes |
 
 **Fixture CSVs** and parser tests are in linkedin-ingestion.md §Testing. **Advisors:** `supabase db lint` and the Security Advisor run in CI and must report no RLS-disabled tables or definer views.
@@ -1213,6 +1361,18 @@ RPC errors are raised as `SQLSTATE P0001` with the API code in `HINT`, per MASTE
 ## Proposed additions for the Decision log
 
 1. NEW table `audit_log` (D7). 2. NEW table `company_aliases` (D8). 3. NEW columns `applications.resume_id`, `applications.request_hash`, `applications.status_changed_at` (D1). 4. Profile.csv fields as columns on `linkedin_imports` (D9). 5. NEW functions `set_application_status`, `withdraw_application`, `get_applicant_contact`, `set_my_role`, `mark_onboarded`, `activate_linkedin_import`, `export_my_data`, `connections_at_company`, `job_applicant_rankings_page`, `current_user_role`, `is_admin`. 6. `profiles.email` hidden by column grant (D2). 7. GitHub scaling `(avg − 1) / 9 × 100` and incomplete-tier ranking (see applicant-ranking.md; changes MASTER_PLAN §3.3 and OQ2).
+
+## Changes from the cross-review round
+
+Applied after reviewing ai-evaluation.md, token-system.md and company-verification.md (details in each file's "Data review"):
+- **Identity:** `handle_new_user` reads a whitelisted `role` from sign-up metadata; NEW `custom_access_token_hook` (B1).
+- **Companies:** NEW tables `work_email_verifications`, `blocked_email_domains`; `verified_via` + `company_admin`; new columns on `companies`/`company_domains`/`recruiter_memberships`; `name_normalized` no longer unique; one-directional verified CHECKs; domain method list `email_link|admin|dns_txt`; recruiter writes RPC-only; `company-logos` bucket.
+- **RLS helpers:** `is_company_member` now requires a verified company too (and its `false` form means "non-rejected"); NEW `is_company_admin`; `is_admin()` requires `aal2`; pending recruiters may manage drafts; the publish check is in `guard_job_update`.
+- **Jobs:** `token_cost default 2`; `token_cost` and `is_technical` frozen at the first application (`pricing_locked`).
+- **Evaluations:** `fit_evaluations` and `repo_evaluations` columns from ai-evaluation.md §6; the in-flight dedupe index; the repo review cache index; `failure_code` CHECK list; `fit_evaluations.flags` hidden from clients by column grant.
+- **Tokens:** `token_ledger.note` renamed to `reason`; refunds require `application_id` and `reason`; one refund per application; `application_id` **ON DELETE CASCADE** (fixes an account-deletion failure); no grant cron, virtual grant in `get_token_balance()`; `apply_to_job` gains `p_expected_cost`.
+- **Views:** `my_applications` gains `repo_review_status`, `repo_review_reason` (coarse, via a definer helper) and `is_refunded`.
+- **AI and audit:** `ai_usage` replaced with Backend's full spec; three new `audit_log` actions.
 
 ## Review notes
 
