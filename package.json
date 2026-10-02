@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "vitest run --exclude 'tests/integration/**/*.live.test.ts'",
+    "test:live": "vitest run tests/integration"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
@@ -20,6 +22,7 @@
     "fflate": "^0.8.3",
     "lucide-react": "^1.49.0",
     "next": "15.5.27",
+    "papaparse": "^5.7.0",
     "radix-ui": "^1.6.7",
     "react": "19.1.0",
     "react-dom": "19.1.0",
@@ -35,11 +38,14 @@
     "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^18.0.5",
     "eslint": "^9",
     "eslint-config-next": "15.5.27",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }
